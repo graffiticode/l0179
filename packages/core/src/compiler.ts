@@ -15,6 +15,7 @@ import {
   attributeFields,
   mergeAttributes,
   assertKnownAttributes,
+  checkType,
   tagValue,
 } from "./attributes.js";
 import { resolveInheritedPoints, getValidation } from "./validation.js";
@@ -111,6 +112,21 @@ export class Transformer extends BaseTransformer {
         try {
           const attrs = mergeAttributes(toPlainObject(v1), "sheet");
           assertKnownAttributes("SHEET", attrs);
+          // A sheet without cells compiles to an empty grid and renders nothing — the styling
+          // and column widths have nothing to apply to. Caught here rather than left to the
+          // reader: it is silent otherwise, and a generator asked for "a header row with bold
+          // white text" wrote exactly this, styling row 1 with no cells in it. Every one of
+          // L0166's 129 corpus programs carries a `cells` block, so nothing legitimate is lost.
+          if (!attrs.cells || Object.keys(attrs.cells).length === 0) {
+            resume(
+              err.concat(
+                "sheet: no cells. A sheet needs a `cells` block holding at least one cell, " +
+                "e.g. cells [ cell A1 [text \"Total\"] ] {} — styling a row or column has no " +
+                "effect on its own.",
+              ),
+              {});
+            return;
+          }
           // The id has no home in the output contract — L0166 emits no id field and adding one
           // would break byte-identity. Bind it for downstream use instead.
           const id = tagValue(toPlainObject(v0));
@@ -178,6 +194,13 @@ for (const [name, meta] of Object.entries(attributeFields)) {
       const err = ([] as any[]).concat(e0 || []);
       try {
         const raw = toPlainObject(v0);
+        // Type check here rather than in the Checker: the base Checker.LIST visits only its
+        // first element, so a rule there would skip every attribute after the first.
+        const typeError = checkType(name, meta, raw);
+        if (typeError) {
+          resume(err.concat(typeError), {});
+          return;
+        }
         const value = meta.shape === "object"
           ? (() => {
               const attrs = mergeAttributes(raw, meta.field);

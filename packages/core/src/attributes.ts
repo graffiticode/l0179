@@ -25,6 +25,16 @@ const asTag = (v: any) => tagValue(v) || "";
 
 export type Shape = "object";
 
+/**
+ * The argument type an attribute accepts. Omitted means anything goes (L0166 leaves `text`,
+ * `expected`, `title`, `instructions` and `protected` unchecked, so those stay unchecked here).
+ *
+ *   "string"  a string, or a bare tag — `color "red"` and `color red` are the same thing
+ *   "number"  a finite number
+ *   "boolean" a boolean literal
+ */
+export type Expects = "string" | "number" | "boolean";
+
 export interface AttributeMeta {
   /** The key this attribute emits. */
   field: string;
@@ -32,6 +42,59 @@ export interface AttributeMeta {
   shape?: Shape;
   /** Value coercion, transcribed from L0166. Omitted means the value is used as-is. */
   coerce?: (v: any) => any;
+  /** Argument type, enforced in the Transformer — see checkType and §7.1 of the style guide. */
+  expects?: Expects;
+}
+
+/**
+ * Reject an argument of the wrong type.
+ *
+ * This lives in the TRANSFORMER, not the Checker, and the reason is load-bearing: the base
+ * `Checker.LIST` visits only its first element, so a Checker rule in this style fires for the
+ * first attribute of a list and silently skips the rest. L0166 puts these checks in its Checker
+ * and gets away with it because its attributes chain rather than sit in a list.
+ *
+ * Without this L0179 was strictly MORE PERMISSIVE than L0166 — `font-size 14` compiled to
+ * `font-size: ""`, dropping the value with no error, where L0166 says
+ * `E_ARG_TYPE: FONT_SIZE expects a string`. The differential test could not see it: it compares
+ * programs that compile in BOTH languages, so it is blind to L0179 accepting what L0166 rejects.
+ */
+export function checkType(name: string, meta: AttributeMeta, raw: any): string | null {
+  if (!meta.expects) return null;
+  const word = name.toLowerCase().replace(/_/g, "-");
+  switch (meta.expects) {
+  case "string":
+    // A bare tag is a string here: `align center` and `align "center"` both reach the target.
+    if (tagValue(raw) === undefined) {
+      return `E_ARG_TYPE: ${word} expects a string, got ${describe(raw)}.`;
+    }
+    return null;
+  case "number":
+    if (typeof raw !== "number" || !isFinite(raw)) {
+      return `E_ARG_TYPE: ${word} expects a number, got ${describe(raw)}.`;
+    }
+    if (name === "POINTS" && raw < 0) {
+      return `E_INVALID_POINTS: ${raw} must be >= 0.`;
+    }
+    return null;
+  case "boolean":
+    if (typeof raw !== "boolean") {
+      return `E_ARG_TYPE: ${word} expects true or false, got ${describe(raw)}.`;
+    }
+    return null;
+  default:
+    return null;
+  }
+}
+
+/** Name a bad value the way its author wrote it, so the message points at the mistake. */
+function describe(v: any): string {
+  if (v === null || v === undefined) return "nothing";
+  if (typeof v === "number") return `the number ${v}`;
+  if (typeof v === "boolean") return `${v}`;
+  if (Array.isArray(v)) return "a list";
+  if (typeof v === "object") return "a record";
+  return `\`${String(v)}\``;
 }
 
 export const attributeFields: Record<string, AttributeMeta> = {
@@ -39,30 +102,30 @@ export const attributeFields: Record<string, AttributeMeta> = {
   TEXT: { field: "text" },
 
   // Presentation. Note the kebab fields and the `|| ''` coercion — see the header.
-  WIDTH: { field: "width" },
-  ALIGN: { field: "align", coerce: tagValue },
-  BACKGROUND_COLOR: { field: "background-color", coerce: asTag },
-  FONT_WEIGHT: { field: "font-weight", coerce: asTag },
-  FONT_SIZE: { field: "font-size", coerce: asTag },
-  FONT_FAMILY: { field: "font-family", coerce: asTag },
-  FONT_STYLE: { field: "font-style", coerce: asTag },
-  COLOR: { field: "color", coerce: asTag },
-  TEXT_DECORATION: { field: "text-decoration", coerce: asTag },
-  BORDER: { field: "border", coerce: asTag },
-  VERTICAL_ALIGN: { field: "vertical-align", coerce: asTag },
-  FORMAT: { field: "format", coerce: asTag },
+  WIDTH: { field: "width", expects: "number" },
+  ALIGN: { field: "align", coerce: tagValue, expects: "string" },
+  BACKGROUND_COLOR: { field: "background-color", coerce: asTag, expects: "string" },
+  FONT_WEIGHT: { field: "font-weight", coerce: asTag, expects: "string" },
+  FONT_SIZE: { field: "font-size", coerce: asTag, expects: "string" },
+  FONT_FAMILY: { field: "font-family", coerce: asTag, expects: "string" },
+  FONT_STYLE: { field: "font-style", coerce: asTag, expects: "string" },
+  COLOR: { field: "color", coerce: asTag, expects: "string" },
+  TEXT_DECORATION: { field: "text-decoration", coerce: asTag, expects: "string" },
+  BORDER: { field: "border", coerce: asTag, expects: "string" },
+  VERTICAL_ALIGN: { field: "vertical-align", coerce: asTag, expects: "string" },
+  FORMAT: { field: "format", coerce: asTag, expects: "string" },
   PROTECTED: { field: "protected" },
 
   // Assessment
   ASSESS: { field: "assess", shape: "object" },
-  METHOD: { field: "method", coerce: (v) => tagValue(v)?.toLowerCase() || v },
+  METHOD: { field: "method", coerce: (v) => tagValue(v)?.toLowerCase() || v, expects: "string" },
   EXPECTED: { field: "expected" },
-  POINTS: { field: "points" },
+  POINTS: { field: "points", expects: "number" },
 
   // Sheet-level
   TITLE: { field: "title" },
   INSTRUCTIONS: { field: "instructions" },
-  HIDE_FORMULABAR: { field: "hideMenu" },
+  HIDE_FORMULABAR: { field: "hideMenu", expects: "boolean" },
 };
 
 /**
