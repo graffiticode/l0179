@@ -1,3 +1,12 @@
+/* The spreadsheet renderer's own stylesheet.
+ *
+ * L0179 delegates its Form to @graffiticode/l0166 (see components/form/Form.tsx), and that
+ * package ships its styles separately as ./style.css. Importing the component without this
+ * yields a DOM that is structurally correct and visually broken: unstyled grid, no card, and
+ * BOTH formula-bar rows visible, since one of them is hidden by these rules rather than by
+ * markup. Must come before the Tailwind layers so local utilities can still override it. */
+@import "@graffiticode/l0166/style.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
