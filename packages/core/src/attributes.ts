@@ -44,6 +44,34 @@ export interface AttributeMeta {
   coerce?: (v: any) => any;
   /** Argument type, enforced in the Transformer — see checkType and §7.1 of the style guide. */
   expects?: Expects;
+  /**
+   * An extra rule beyond the type, run after it. Returns an error message, or null to accept.
+   *
+   * Exists because a type check is not always enough to keep a value MEANINGFUL: `font-size "16"`
+   * is a perfectly good string that is not a CSS length, so it reaches the renderer and is
+   * silently ignored. That is the same silent-drop failure the type checks were added to close,
+   * one level down.
+   */
+  validate?: (v: any) => string | null;
+}
+
+/** CSS keywords a font size may legitimately be instead of a length. */
+const FONT_SIZE_KEYWORDS = new Set([
+  "xx-small", "x-small", "small", "medium", "large", "x-large", "xx-large",
+  "smaller", "larger", "inherit", "initial", "unset",
+]);
+
+/**
+ * A CSS length: a number followed by a unit. React passes a style string through untouched, so a
+ * unitless "16" becomes `font-size: 16`, which browsers discard — the text renders at the default
+ * size with nothing to say why. Every font-size in L0166's corpus is written with `px`.
+ */
+function cssSize(v: any): string | null {
+  const s = tagValue(v);
+  if (s === undefined) return null;           // the type check already reported this
+  if (FONT_SIZE_KEYWORDS.has(s.toLowerCase())) return null;
+  if (/^-?(\d+\.?\d*|\.\d+)(px|pt|pc|em|rem|ex|ch|vw|vh|vmin|vmax|%|in|cm|mm|q)$/i.test(s.trim())) return null;
+  return `E_INVALID_SIZE: font-size "${s}" needs a unit, e.g. "14px" — a bare number is not a CSS size and does not render.`;
 }
 
 /**
@@ -87,6 +115,11 @@ export function checkType(name: string, meta: AttributeMeta, raw: any): string |
   }
 }
 
+/** Type first, then the attribute's own rule. Returns the first error, or null. */
+export function checkValue(name: string, meta: AttributeMeta, raw: any): string | null {
+  return checkType(name, meta, raw) ?? (meta.validate ? meta.validate(raw) : null);
+}
+
 /** Name a bad value the way its author wrote it, so the message points at the mistake. */
 function describe(v: any): string {
   if (v === null || v === undefined) return "nothing";
@@ -106,7 +139,7 @@ export const attributeFields: Record<string, AttributeMeta> = {
   ALIGN: { field: "align", coerce: tagValue, expects: "string" },
   BACKGROUND_COLOR: { field: "background-color", coerce: asTag, expects: "string" },
   FONT_WEIGHT: { field: "font-weight", coerce: asTag, expects: "string" },
-  FONT_SIZE: { field: "font-size", coerce: asTag, expects: "string" },
+  FONT_SIZE: { field: "font-size", coerce: asTag, expects: "string", validate: cssSize },
   FONT_FAMILY: { field: "font-family", coerce: asTag, expects: "string" },
   FONT_STYLE: { field: "font-style", coerce: asTag, expects: "string" },
   COLOR: { field: "color", coerce: asTag, expects: "string" },

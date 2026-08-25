@@ -15,7 +15,7 @@ import {
   attributeFields,
   mergeAttributes,
   assertKnownAttributes,
-  checkType,
+  checkValue,
   tagValue,
 } from "./attributes.js";
 import { resolveInheritedPoints, getValidation } from "./validation.js";
@@ -196,7 +196,7 @@ for (const [name, meta] of Object.entries(attributeFields)) {
         const raw = toPlainObject(v0);
         // Type check here rather than in the Checker: the base Checker.LIST visits only its
         // first element, so a rule there would skip every attribute after the first.
-        const typeError = checkType(name, meta, raw);
+        const typeError = checkValue(name, meta, raw);
         if (typeError) {
           resume(err.concat(typeError), {});
           return;

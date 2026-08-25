@@ -56,6 +56,16 @@ cells in it.
 Presentation: `width`, `align`, `background-color`, `font-weight`, `font-size`, `font-family`,
 `font-style`, `color`, `text-decoration`, `border`, `vertical-align`, `format`, `protected`.
 
+Values are CSS, written as strings, and `width` is the exception at a bare number:
+
+```
+column A [width 200]
+cell A1 [font-size "14px" font-weight "bold" color "#1a2744" background-color "#eee"]
+```
+
+**A size needs its unit.** `font-size "14px"` renders; `font-size "16"` and `font-size 16` are
+both compile errors, because a bare number is not a CSS size and a browser discards it silently.
+
 An attribute a container does not accept is a compile error naming what it does take, so put
 each attribute on the thing it describes: `width` belongs to a column, not to the sheet.
 

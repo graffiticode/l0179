@@ -100,3 +100,13 @@ test("a sheet with no cells is an error, not an empty grid", async () => {
 test("an attribute on the wrong container names where it belongs", async () => {
   await expectError(cell('method "value"'), "belongs to assess");
 });
+
+// A type check is not enough to keep a value meaningful: "16" is a fine string and a useless CSS
+// size. The repair loop produced exactly this when the type error was first enforced.
+test.each(['"14px"', '"1.2em"', '"120%"', '"large"'])("font-size %s is a real size", async (v) => {
+  await expect(compileSrc(cell(`font-size ${v}`))).resolves.toBeTruthy();
+});
+
+test.each(['"16"', '"big"'])("font-size %s is rejected for want of a unit", async (v) => {
+  await expectError(cell(`font-size ${v}`), "needs a unit");
+});
