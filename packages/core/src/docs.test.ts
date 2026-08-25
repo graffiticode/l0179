@@ -7,12 +7,13 @@
  * L0166 has no equivalent, and four `params` examples in its spec.md sat there never parsing —
  * unquoted keys and comma separators, both syntax errors — until L0179 was ported from them.
  */
-import { test, expect } from "vitest";
+import { test, describe, expect } from "vitest";
 import { readFileSync, readdirSync } from "fs";
 import { parser } from "@graffiticode/parser";
 import { compiler, lexicon } from "./index.js";
 
-const SPEC_FILES = ["spec/spec.md", "spec/instructions.md", "spec/examples.md"];
+// examples.md holds PROMPTS, not programs — it is checked by the numbering guards below.
+const SPEC_FILES = ["spec/spec.md", "spec/instructions.md"];
 
 function blocks(path: string): string[] {
   const out: string[] = [];
@@ -61,7 +62,7 @@ test("every program fragment in spec/ compiles, not merely parses", async () => 
     }
   }
   expect(bad, `${bad.length} of ${ok + bad.length} fragments failed to compile:${bad.join("")}`).toEqual([]);
-  expect(ok).toBeGreaterThan(100);   // the corpus alone is 127
+  expect(ok, "no program fragments found — the guard would pass vacuously").toBeGreaterThan(5);
 });
 
 test("the starter template compiles", async () => {
@@ -112,4 +113,51 @@ test("every attribute in the table is reachable from the lexicon", async () => {
   ]);
   const unknown = [...new Set(documented)].filter((w) => !words.has(w) && !structural.has(w));
   expect(unknown, `documented but not in the attribute table: ${unknown.join(", ")}`).toEqual([]);
+});
+
+// examples.md is the RAG prompt corpus. L0176 learned the hard way that its numbering rots
+// silently: duplicate numbers, category ranges that no longer matched their contents, and a
+// header still claiming 100 prompts when there were 170. None of that breaks a build. L0166,
+// where this list came from, has no such guard — so these ran against it for the first time here.
+describe("the RAG example corpus is coherently numbered", () => {
+  const text = () => readFileSync("spec/examples.md", "utf-8");
+
+  const parse = () => {
+    const examples: { n: number; category: number | null }[] = [];
+    const categories: { c: number; lo: number; hi: number }[] = [];
+    let current: number | null = null;
+    for (const line of text().split("\n")) {
+      const h = /^## Category (\d+): .*\((\d+)–(\d+)\)$/.exec(line);
+      if (h) {
+        current = Number(h[1]);
+        categories.push({ c: current, lo: Number(h[2]), hi: Number(h[3]) });
+        continue;
+      }
+      const m = /^(\d+)\. /.exec(line);
+      if (m) examples.push({ n: Number(m[1]), category: current });
+    }
+    return { examples, categories };
+  };
+
+  test("examples run 1..N with no duplicate or missing number", () => {
+    const { examples } = parse();
+    expect(examples.map((e) => e.n))
+      .toEqual(Array.from({ length: examples.length }, (_, i) => i + 1));
+  });
+
+  test("each category heading's range matches what it contains", () => {
+    const { examples, categories } = parse();
+    for (const { c, lo, hi } of categories) {
+      const mine = examples.filter((e) => e.category === c).map((e) => e.n);
+      expect(mine.length, `Category ${c} has no examples`).toBeGreaterThan(0);
+      expect([mine[0], mine[mine.length - 1]], `Category ${c} heading range`).toEqual([lo, hi]);
+    }
+  });
+
+  test("the stated prompt count matches the number of prompts", () => {
+    const { examples } = parse();
+    const stated = /^(\d+) example prompts/m.exec(text());
+    expect(stated, "no '<N> example prompts' line in the header").toBeTruthy();
+    expect(Number(stated![1])).toBe(examples.length);
+  });
 });
