@@ -67,8 +67,19 @@ Three workspaces:
   Auth attaches `req.auth` but does not reject anonymous requests.
 - **`packages/view`** (`@graffiticode/l0179-view`) — `Form` re-exports
   `@graffiticode/l0166`'s Form verbatim (same data shape), injected into the shared `View` from
-  `@graffiticode/l0000-view`. Two Vite builds: the library (`vite.config.ts`, React external) and
-  the standalone `/form` embed (`vite.embed.config.ts` → `dist-embed/`).
+  `@graffiticode/l0000-view` as `<View Form={Form} reduce={reduce} />`. Two Vite builds: the
+  library (`vite.config.ts`, React external) and the standalone `/form` embed
+  (`vite.embed.config.ts` → `dist-embed/`).
+
+  `src/components/form/reduce.ts` is **not optional wiring** — it is the half of L0166's state
+  protocol that is not generic. L0166's Form reports an edited cell as
+  `{cells: {A1: {text, formattedValue}}}` and expects it merged into `data.interaction.cells`
+  per cell, preserving each cell's `assess` rules and formatting. The shared View's generic
+  `update` merges onto the top level instead, which writes a `cells` key nothing renders while
+  `interaction.cells` goes stale — the edit never reaches the grid and the next compile redraws
+  the sheet from source, erasing what the learner typed. Everything else in the protocol
+  (`init`, `compiled`, `response`, `focus`) is handled by the shared View; `reduce` returns
+  `undefined` for those so they fall through.
 
 ### The attribute table drives everything
 
