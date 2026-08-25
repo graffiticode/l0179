@@ -155,7 +155,7 @@ function compileWith(compiler, code, config = {}) {
   return new Promise((res, rej) => {
     compiler.compile(code, {}, config, (e, v) => {
       const errs = Array.isArray(e) ? e.filter(Boolean) : e ? [e] : [];
-      errs.length ? rej(errs) : res(v);
+      if (errs.length) rej(errs); else res(v);
     });
   });
 }
