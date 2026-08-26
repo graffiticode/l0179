@@ -25,12 +25,38 @@ const mergeCell = (prev: any, next: any) => ({
   formattedValue: next?.formattedValue,
 });
 
+/** Fold reported cells into one cell map, preserving everything the report does not carry. */
+const mergeCells = (into: any, reported: any) =>
+  Object.keys(reported).reduce(
+    (acc: any, name: string) => ({ ...acc, [name]: mergeCell(acc[name], reported[name]) }),
+    into || {},
+  );
+
 export const reduce: LanguageReducer = (data: any, { type, args }: StateAction) => {
   // Only an `update` carrying cells is ours; anything else falls through to the shared View.
   if (type !== "update" || !args?.cells || !data?.interaction) return undefined;
-  const cells = Object.keys(args.cells).reduce(
-    (acc: any, name: string) => ({ ...acc, [name]: mergeCell(acc[name], args.cells[name]) }),
-    data.interaction.cells || {},
-  );
-  return { ...data, interaction: { ...data.interaction, cells } };
+
+  // With several sheets the Form tags the edit with the sheet it came from. Merging into
+  // `interaction.cells` regardless would write sheet 2's edit onto sheet 1's grid — the same
+  // class of mistake as merging onto the top level, one level down.
+  const { sheetId } = args as any;
+  if (sheetId && Array.isArray(data.interaction.sheets)) {
+    const sheets = data.interaction.sheets.map((s: any) => (
+      s.id === sheetId ? { ...s, cells: mergeCells(s.cells, args.cells) } : s
+    ));
+    return {
+      ...data,
+      interaction: {
+        ...data.interaction,
+        sheets,
+        // The flat fields mirror the first sheet, for consumers that predate `sheets`.
+        ...(sheets[0]?.id === sheetId ? { cells: sheets[0].cells } : {}),
+      },
+    };
+  }
+
+  return {
+    ...data,
+    interaction: { ...data.interaction, cells: mergeCells(data.interaction.cells, args.cells) },
+  };
 };

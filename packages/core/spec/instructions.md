@@ -12,13 +12,12 @@ say so instead of emitting a program.
 
 ## The shape of a program
 
-Every program is one `sheets` list holding one `sheet`, and the sheet's body is a list of
-attributes:
+Every program is one `sheets` list holding one or more `sheet`s. Each sheet's body is a list of
+attributes; anything that describes the whole program goes **after** the closing `]`:
 
 ```
 sheets [
   sheet "s1" [
-    title "Quarterly Totals"
     columns [
       column A [width 200 align "right"]
     ] {}
@@ -27,10 +26,34 @@ sheets [
       cell B1 [text "=SUM(B2:B4)"]
     ] {}
   ]
-] {
+] title "Quarterly Totals" {
   "v": "0.0.1"
 }..
 ```
+
+**`title` and `instructions` go after the `]`, never inside a sheet.** They name the program, and
+a program can have several sheets. Writing `title` inside a `sheet [...]` is an error.
+
+For more than one sheet, add `sheet` entries and give each a `name` for its tab:
+
+```
+sheets [
+  sheet "s1" [
+    name "Revenue"
+    cells [ cell A1 [text "Q1"] ] {}
+  ]
+  sheet "s2" [
+    name "Costs"
+    cells [ cell A1 [text "Rent"] ] {}
+  ]
+] title "Quarterly Totals" {
+  "v": "0.0.1"
+}..
+```
+
+Each sheet needs its own id, and the ids must differ. A tab strip appears once there are two or
+more sheets; a sheet menu is always there. `show-sheet-tabs <bool>` and `hide-sheet-menu <bool>`, both
+written after the `]`, override that.
 
 ## Three rules cover the whole syntax
 
@@ -207,4 +230,6 @@ a param with `{{NAME}}`.
   that re-orders the cells it did not change produces a diff the size of the whole sheet, and every
   version of that item is then unreadable against the one before it.
 - End the program with the version record and `..`: `] {\n  "v": "0.0.1"\n}..`
-- Give the sheet a short id: `sheet "s1"`.
+- Give each sheet a short id: `sheet "s1"`, `sheet "s2"`. Ids must be distinct.
+- Write `title` and `instructions` after the `sheets` list, never inside a `sheet`.
+- `params` goes last of all — anything written after it is discarded.

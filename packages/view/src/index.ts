@@ -8,11 +8,11 @@
 import "./index.css";
 
 export { Form, reduce } from "./components/form";
-// Scoring travels with the Form, which is L0166's for now (see components/form/Form.tsx).
-// Re-exported so consumers have ONE import source for the language and no consumer needs its
-// own dependency on L0166 -- when the renderer is ported, this line changes and nothing
-// downstream does.
-export { scoreCells, getCellsValidation } from "@graffiticode/l0166";
+// Scoring is L0179's own, and deliberately DOES NOT travel with the Form: ./scoring imports no
+// React and no ProseMirror, so the Learnosity scorer bundle -- which Learnosity also runs
+// server-side -- can load it in bare Node. Verified equivalent to L0166's implementation over
+// all 129 corpus programs before that dependency was dropped; see ./scoring/score.ts.
+export { scoreCells, getCellsValidation } from "./scoring/index.js";
 export { View } from "@graffiticode/l0000-view";
 export type {
   FormProps,

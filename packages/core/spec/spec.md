@@ -12,12 +12,12 @@ are collected in a bracket list rather than chained. See
 
 ## Structure
 
-A program is a `sheets` list holding one `sheet`, and the sheet's body is an attribute list.
+A program is a `sheets` list holding one or more `sheet`s. Each sheet's body is an attribute
+list; whatever describes the program as a whole is written *after* the list.
 
 ```
 sheets [
   sheet "s1" [
-    title "Quarterly Totals"
     columns [
       column A [width 200 align "right"]
     ] {}
@@ -26,19 +26,57 @@ sheets [
       cell A2 [text "=SUM(B2:B4)"]
     ] {}
   ]
-] {
+] title "Quarterly Totals" {
   "v": "0.0.1"
 }..
 ```
 
+`title` sits after the `]`, not inside the sheet, because it names the **program** — with two
+sheets, a title written inside one of them has no meaning. The same goes for `instructions`,
+`show-sheet-tabs`, and `hide-sheet-menu`.
+
 | Word | Form | Description |
 | :--- | :--- | :---------- |
-| `sheets` | member list | The program's sheets, plus a configuration record. Exactly one sheet is supported. |
+| `sheets` | member list | The program's sheets, then its program-level attributes, then a configuration record. |
 | `sheet` | keyed entry | An id and the sheet's attribute list. |
 | `cells` / `columns` / `rows` | member list | The cells, columns, or row regions, plus a configuration record. |
 | `cell` / `column` / `row` | keyed entry | An address and its attribute list. |
 | `assess` | attribute list | Grading rules for a cell, column, or row. |
-| `params` | chaining attribute | Per-render values; follows the `sheets` list. |
+| `params` | chaining attribute | Per-render values; written last, after the `sheets` list. |
+
+## Several sheets
+
+Add more `sheet` entries. Give each a `name` to label it; without one the tab and menu fall back
+to the id.
+
+```
+sheets [
+  sheet "s1" [
+    name "Revenue"
+    cells [ cell A1 [text "Q1"] ] {}
+  ]
+  sheet "s2" [
+    name "Costs"
+    cells [ cell A1 [text "Rent"] ] {}
+  ]
+] title "Quarterly Totals" {
+  "v": "0.0.1"
+}..
+```
+
+Ids must be distinct — they key each sheet's answers and grading, so a duplicate would silently
+overwrite one sheet with the other.
+
+The form always shows a **sheet menu** listing every sheet, even when there is only one, and shows
+a **tab strip** once there are two or more. Two attributes adjust that:
+
+| Word | Value | Effect |
+| :--- | :--- | :----- |
+| `show-sheet-tabs` | boolean | Force the tab strip on for a single sheet, or off for several. |
+| `hide-sheet-menu` | boolean | Hide the sheet menu. |
+
+Setting `hide-sheet-menu true` together with `show-sheet-tabs false` on a program with several sheets is
+an error: nothing would be left to reach the other sheets with.
 
 ## Attributes
 
@@ -54,8 +92,10 @@ Written inside a `[...]` list as a word applied to a value. Order does not matte
 | `text-decoration`, `vertical-align`, `border` | cell, column, row | Presentation. |
 | `format` | cell, column, row | A number format, e.g. `"#,##0.00"`. |
 | `protected` | cell, column, row | When true the learner cannot edit the cell. |
-| `title`, `instructions` | sheet | Text shown above the grid. |
+| `name` | sheet | The sheet's label in the tab strip and the sheet menu. Defaults to its id. |
 | `hide-formulabar` | sheet | Hides the `fx` input above the grid. |
+| `title`, `instructions` | **program** | Text shown above the grid. Written after the `sheets` list, not inside a sheet. |
+| `show-sheet-tabs`, `hide-sheet-menu` | **program** | See [Several sheets](#sec-Several-sheets). Written after the `sheets` list. |
 
 An attribute a container does not accept is a compile error naming what that container takes.
 
@@ -98,6 +138,19 @@ sheets [
 
 A value is a literal, a comma-separated choice list (`"pigs, chickens, cows"`), or a range
 `start..stop:step`.
+
+`params` goes **last** in the chain, after any `title` or `instructions` — anything written after
+it is discarded.
+
+With several sheets, qualify a name with the sheet id and `!`, the same form the grid uses for a
+cell on another sheet. A bare name means the first sheet.
+
+```
+] params {
+  "A1": "10..50:10",
+  "s2!A1": "100..500:100"
+} {
+```
 
 ## Formula functions
 

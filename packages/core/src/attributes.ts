@@ -2,9 +2,11 @@
 /**
  * The attribute vocabulary, as data.
  *
- * Every word here is arity 1: it takes one value and evaluates to a single-key record, which the
- * enclosing container merges. Adding an attribute is a row in this file — the Checker and
- * Transformer methods are generated from it in compiler.ts, never hand-written. See
+ * Most words here are arity 1: one value in, a single-key record out, which the enclosing
+ * container merges. A word marked `chaining` is arity 2 instead — see `AttributeMeta.chaining`.
+ * Either way, adding an attribute is a row in this file: the lexicon entry, the Checker method
+ * and the Transformer method are all generated from it, arity included, so a word can never be
+ * arity 1 in one place and arity 2 in another. Never hand-write a handler. See
  * console/docs/language-authoring-style.md.
  *
  * `field` and `coerce` are transcribed from L0166's per-word transformers, not inferred. They
@@ -44,6 +46,23 @@ export interface AttributeMeta {
   coerce?: (v: any) => any;
   /** Argument type, enforced in the Transformer — see checkType and §7.1 of the style guide. */
   expects?: Expects;
+  /**
+   * A CHAINING attribute: arity 2 rather than arity 1, taking its value and the rest of the
+   * chain, and merging the two. It is written after a member list instead of inside an
+   * attribute list:
+   *
+   *     sheets [ ... ] title "Quarterly Totals" show-sheet-tabs true {}
+   *
+   * That position is the `sheets` configuration slot, which is where `params` already goes — so
+   * this needs no new grammar, only a second arity. It exists because `title` and `instructions`
+   * describe the PROGRAM, not a sheet: with two sheets, a title written inside one of them has
+   * no defensible meaning. L0166 chains them at its top level for the same reason; L0179's port
+   * pushed them down into the sheet, and this puts them back.
+   *
+   * A word has exactly one arity (`parser/src/folder.js` reads `word.arity`), so marking one
+   * chaining REMOVES it from attribute lists. That is a breaking source change, not an addition.
+   */
+  chaining?: boolean;
   /**
    * An extra rule beyond the type, run after it. Returns an error message, or null to accept.
    *
@@ -156,9 +175,19 @@ export const attributeFields: Record<string, AttributeMeta> = {
   POINTS: { field: "points", expects: "number" },
 
   // Sheet-level
-  TITLE: { field: "title" },
-  INSTRUCTIONS: { field: "instructions" },
+  NAME: { field: "name", coerce: asTag, expects: "string" },
   HIDE_FORMULABAR: { field: "hideMenu", expects: "boolean" },
+
+  // Program-level, written in the `sheets` configuration slot. See `chaining` above.
+  //
+  // NAMING HAZARD, and it is not hypothetical: `hide-formulabar` emits `hideMenu` — L0166's one
+  // word whose field is unrelated to its spelling — and it means the FORMULA BAR. `hideSheetMenu`
+  // sits next to it and means the SHEET MENU, a different control entirely. Read the field names
+  // here, not the resemblance.
+  TITLE: { field: "title", chaining: true },
+  INSTRUCTIONS: { field: "instructions", chaining: true },
+  SHOW_SHEET_TABS: { field: "showSheetTabs", expects: "boolean", chaining: true },
+  HIDE_SHEET_MENU: { field: "hideSheetMenu", expects: "boolean", chaining: true },
 };
 
 /**
@@ -170,7 +199,10 @@ export const fieldToWord: Record<string, string> = Object.entries(attributeField
     acc[meta.field] = name.toLowerCase().replace(/_/g, "-");
     return acc;
   },
-  {} as Record<string, string>,
+  // Seeded with the one field no row in the table produces: `params` is a hand-written container,
+  // not a generated attribute, but it evaluates into the same `sheets` slot and so has to be
+  // nameable when the slot rejects something.
+  { templateVariablesRecords: "params" } as Record<string, string>,
 );
 
 /**
@@ -182,7 +214,12 @@ export const fieldToWord: Record<string, string> = Object.entries(attributeField
  * exactly that at its block levels before adding this check.
  */
 export const validAttributes: Record<string, string[]> = {
-  SHEET: ["title", "instructions", "hide-formulabar", "columns", "rows", "cells"],
+  // The `sheets` configuration slot. `v` is not an attribute — it is the version marker every
+  // program carries as `{"v": "0.0.1"}`, which PROG destructures away and never emits. It has to
+  // be listed, because this map is what turns validation ON for a container: before there was a
+  // SHEETS entry, `assertKnownAttributes` returned early and the whole slot went unchecked.
+  SHEETS: ["title", "instructions", "show-sheet-tabs", "hide-sheet-menu", "params", "v"],
+  SHEET: ["name", "hide-formulabar", "columns", "rows", "cells"],
   CELL: [
     "text", "assess", "width", "align", "background-color", "font-weight", "font-size",
     "font-family", "font-style", "color", "text-decoration", "border", "vertical-align",

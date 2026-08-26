@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 /**
- * L0166 → L0179 equivalence test, and the translator that seeds L0179's corpus.
+ * L0166 → L0179 equivalence test.
  *
  * L0179 changes the source surface and nothing else: for a single sheet its compiled output must
  * equal L0166's field for field. That makes equivalence testable rather than asserted, and the
@@ -14,9 +14,9 @@
  * that compile to the wrong thing, which is how two false PASSes have happened on this stack.
  *
  * Usage:
- *   node packages/core/tools/differential-test.mjs [--l0166 ../l0166] [--corpus <path>] [--limit N] [--emit <dir>]
+ *   node packages/core/tools/differential-test.mjs [--l0166 ../l0166] [--corpus <path>] [--limit N]
  */
-import { readFileSync, writeFileSync, mkdirSync } from "fs";
+import { readFileSync } from "fs";
 import path from "path";
 import { parser } from "@graffiticode/parser";
 
@@ -30,7 +30,6 @@ const HOME = process.env.HOME;
 const L0166 = arg("--l0166", `${HOME}/work/graffiticode/l0166`);
 const CORPUS = arg("--corpus", `${HOME}/work/graffiticode/console/training/l0166-training-examples.md`);
 const LIMIT = parseInt(arg("--limit", "0"), 10) || 0;
-const EMIT = arg("--emit", "");
 
 const { compiler: c166 } = await import(`${L0166}/packages/api/src/compiler.js`);
 const { lexicon: lex166 } = await import(`${L0166}/packages/api/src/lexicon.js`);
@@ -123,8 +122,12 @@ function makeTranslator(pool) {
     const n = N(id);
     if (!n) return acc;
     switch (n.tag) {
-      case "TITLE": acc.attrs.push(`title ${lit(n.elts[0])}`); return walkTop(n.elts[1], acc);
-      case "INSTRUCTIONS": acc.attrs.push(`instructions ${lit(n.elts[0])}`); return walkTop(n.elts[1], acc);
+      // L0166 chains title/instructions at the TOP level, and so does L0179 — they describe the
+      // program, not a sheet. They go in the tail, before `params`, which discards whatever
+      // follows it. (L0179 briefly put them inside the sheet; that was the scope error this
+      // corrects, and moving them changes the source shape only, never the compiled output.)
+      case "TITLE": acc.head += `title ${lit(n.elts[0])} `; return walkTop(n.elts[1], acc);
+      case "INSTRUCTIONS": acc.head += `instructions ${lit(n.elts[0])} `; return walkTop(n.elts[1], acc);
       case "HIDE_FORMULABAR": acc.attrs.push(`hide-formulabar ${lit(n.elts[0])}`); return walkTop(n.elts[1], acc);
       case "COLUMNS": acc.blocks.push(`columns [\n    ${entries(n.elts[0]).join("\n    ")}\n  ] {}`); return walkTop(n.elts[1], acc);
       case "ROWS": acc.blocks.push(`rows [\n    ${entries(n.elts[0]).join("\n    ")}\n  ] {}`); return walkTop(n.elts[1], acc);
@@ -136,10 +139,10 @@ function makeTranslator(pool) {
   }
 
   return function translate(id) {
-    const acc = { attrs: [], blocks: [], tail: "" };
+    const acc = { attrs: [], blocks: [], head: "", tail: "" };
     walkTop(id, acc);
     const body = [...acc.attrs.map((a) => `  ${a}`), ...acc.blocks.map((b) => `  ${b}`)].join("\n");
-    return `sheets [\n  sheet "s1" [\n${body.split("\n").map((l) => `  ${l}`).join("\n")}\n  ]\n] ${acc.tail || "{}"}..`;
+    return `sheets [\n  sheet "s1" [\n${body.split("\n").map((l) => `  ${l}`).join("\n")}\n  ]\n] ${acc.head}${acc.tail || "{}"}..`;
   };
 }
 
@@ -176,15 +179,15 @@ function diff(a, b, at = "") {
 
 // ── run ────────────────────────────────────────────────────────────────────
 const md = readFileSync(CORPUS, "utf-8");
-// Split per example first: a single regex spanning Prompt→Code silently skips any example whose
-// prompt runs to more than one line, which quietly shrank the test set from 129 to 121.
+// Split per example first, then match the code fence within each. A single regex spanning
+// Prompt→Code silently skips any example whose prompt runs to more than one line, which once
+// quietly shrank the test set from 129 to 121.
 let blocks = md
   .split(/\n### Example /)
   .slice(1)
   .map((chunk) => {
     const code = chunk.match(/#### Code\n\n```\n([\s\S]*?)\n```/);
-    const prompt = chunk.match(/#### Prompt\n([\s\S]*?)\n\n/);
-    return code ? { prompt: (prompt ? prompt[1] : "").replace(/^"|"$/g, "").trim(), src: code[1] } : null;
+    return code ? { src: code[1] } : null;
   })
   .filter(Boolean);
 if (LIMIT) blocks = blocks.slice(0, LIMIT);
@@ -193,7 +196,6 @@ console.log(`[diff] ${blocks.length} examples from ${path.basename(CORPUS)}`);
 
 let ok = 0;
 const failures = [];
-const translated = [];
 
 for (const [i, ex] of blocks.entries()) {
   const label = `#${i + 1}`;
@@ -215,7 +217,6 @@ for (const [i, ex] of blocks.entries()) {
     const d = diff(out166, out179);
     if (d) throw new Error(`output differs at ${d}`);
     ok++;
-    translated.push({ prompt: ex.prompt, code: src179 });
   } catch (e) {
     const msg = Array.isArray(e) ? (e[0]?.message ?? JSON.stringify(e[0])) : (e?.message ?? String(e));
     failures.push({ label, stage, msg: String(msg).slice(0, 300), src: ex.src });
@@ -228,10 +229,5 @@ if (failures.length) {
   console.log(`[diff] ${failures.length} failed: ${Object.entries(byStage).map(([s, n]) => `${s}=${n}`).join(" ")}`);
   for (const f of failures.slice(0, 12)) console.log(`  ${f.label} [${f.stage}] ${f.msg.split("\n")[0]}`);
   if (failures.length > 12) console.log(`  … and ${failures.length - 12} more`);
-}
-if (EMIT && translated.length) {
-  mkdirSync(EMIT, { recursive: true });
-  writeFileSync(`${EMIT}/examples.json`, JSON.stringify(translated, null, 2) + "\n");
-  console.log(`[diff] wrote ${translated.length} translated examples → ${EMIT}/examples.json`);
 }
 process.exit(failures.length ? 1 : 0);

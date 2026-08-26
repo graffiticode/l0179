@@ -22,9 +22,16 @@ const fn = (name: string, arity: 1 | 2) => ({
 });
 
 // Attributes are generated from the same table the handlers are, so a word can never exist in
-// one and not the other.
+// one and not the other — including their ARITY, which the table decides. A `chaining` attribute
+// is arity 2: it takes its value and the rest of the chain, and is written in the `sheets`
+// configuration slot rather than inside an attribute list. Getting this from the same table is
+// what stops a word being arity 1 in the lexicon and arity 2 in the Transformer, which parses
+// as nonsense rather than as an error.
 const attributeWords = Object.fromEntries(
-  Object.keys(attributeFields).map((name) => [name.toLowerCase().replace(/_/g, "-"), fn(name, 1)]),
+  Object.entries(attributeFields).map(([name, meta]) => [
+    name.toLowerCase().replace(/_/g, "-"),
+    fn(name, meta.chaining ? 2 : 1),
+  ]),
 );
 
 const structural = {

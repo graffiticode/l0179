@@ -21,5 +21,15 @@ declare module "@graffiticode/l0179-view" {
   export const getCellsValidation: (args: { cells: any; validation: any }) => any;
 }
 
+// The scorer imports scoring on its own subpath, so it never pulls in the renderer.
+declare module "@graffiticode/l0179-view/scoring" {
+  export const scoreCells: (args: {
+    cells: any;
+    validation: any;
+    interactionCells?: any;
+  }) => any;
+  export const getCellsValidation: (args: { cells: any; validation: any }) => any;
+}
+
 declare module "@graffiticode/l0179-view/style.css";
 declare module "@graffiticode/learnosity-cqt/styles.css";

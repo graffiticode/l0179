@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 # L0179 RAG Training Examples
 
-107 example prompts for training a RAG model on L0179, the interactive-spreadsheet language —
+115 example prompts for training a RAG model on L0179, the interactive-spreadsheet language —
 covering display spreadsheets, assessed spreadsheets, and parameterized templates.
 
 Each numbered line is a prompt in the author's own voice. Prompts describe WHAT to build, never
@@ -147,3 +147,14 @@ languages. Where the two diverge in future, this file diverges with them.
 105. Create a column of five assessed cells expecting 2, 4, 6, 8, 10, all worth 2 points each, set once on the row rather than per cell.
 106. Create an assessed spreadsheet worth 10 points total, split across four questions, where students get partial credit for each cell they answer correctly.
 107. Create a spreadsheet with a title, instructions, five word-problem rows with blank assessed cells in column B, each worth 2 points, and a bold header row.
+
+## Category 12: Multiple Sheets (108–115)
+
+108. Create a workbook with two sheets, one named Revenue and one named Costs, each with a small table.
+109. Make a spreadsheet with three tabs, one for each of January, February, and March, each listing daily sales.
+110. Create a two-sheet workbook where the first sheet holds the data and the second is a blank worksheet for the student to fill in.
+111. Build a workbook with a Data tab showing prices and a Practice tab with assessed cells worth 3 points each.
+112. Create a three-sheet workbook titled "Quarterly Review" with a shared set of instructions shown above every tab.
+113. Make a two-sheet assessment worth 10 points total, split evenly between the two sheets.
+114. Create a single-sheet spreadsheet named Summary that shows its name in the sheet menu.
+115. Make a two-sheet workbook where each sheet has its own bold header row and a total row at the bottom.

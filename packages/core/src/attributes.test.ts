@@ -110,3 +110,149 @@ test.each(['"14px"', '"1.2em"', '"120%"', '"large"'])("font-size %s is a real si
 test.each(['"16"', '"big"'])("font-size %s is rejected for want of a unit", async (v) => {
   await expectError(cell(`font-size ${v}`), "needs a unit");
 });
+
+// ── Several sheets ─────────────────────────────────────────────────────────
+//
+// None of this had a single test before multiple sheets landed — including the rule that used to
+// reject a second sheet. The compiled shape is the contract every consumer reads, so these assert
+// on OUTPUT, never on source shape.
+
+const twoSheets = (s1 = "", s2 = "", tail = "") => `sheets [
+  sheet "s1" [ ${s1} cells [ cell A1 [text "a"] ] {} ]
+  sheet "s2" [ ${s2} cells [ cell A1 [text "b"] ] {} ]
+] ${tail} {}..`;
+
+test("two sheets compile and each keeps its own cells", async () => {
+  const out = await compileSrc(twoSheets());
+  expect(out.interaction.sheets.map((s: any) => s.id)).toEqual(["s1", "s2"]);
+  expect(out.interaction.sheets[0].cells.A1.text).toBe("a");
+  expect(out.interaction.sheets[1].cells.A1.text).toBe("b");
+});
+
+test("the flat fields mirror sheet 1, so an older renderer still draws something", async () => {
+  const out = await compileSrc(twoSheets());
+  expect(out.interaction.cells.A1.text).toBe("a");
+});
+
+// The disjunction that keeps single-sheet output byte-identical to L0166. If this test and the
+// next one disagree, the differential test stops meaning anything.
+test("a lone unnamed sheet emits NO sheets envelope", async () => {
+  const out = await compileSrc('sheets [ sheet "s1" [ cells [ cell A1 [text "a"] ] {} ] ] {}..');
+  expect(out.interaction.sheets).toBeUndefined();
+  expect(out.interaction.showSheetTabs).toBeUndefined();
+  expect(out.interaction.hideSheetMenu).toBeUndefined();
+  expect(out.validation.sheets).toBeUndefined();
+});
+
+test("a lone NAMED sheet does emit one, so the sheet menu can label it", async () => {
+  const out = await compileSrc(
+    'sheets [ sheet "s1" [ name "Revenue" cells [ cell A1 [text "a"] ] {} ] ] {}..');
+  expect(out.interaction.sheets).toHaveLength(1);
+  expect(out.interaction.sheets[0].name).toBe("Revenue");
+});
+
+test("name falls back to the id, and the id to its position", async () => {
+  const out = await compileSrc(twoSheets('name "Revenue"'));
+  expect(out.interaction.sheets.map((s: any) => s.name)).toEqual(["Revenue", "s2"]);
+});
+
+test("duplicate ids are refused — they key answers and grading", async () => {
+  await expectError(
+    `sheets [
+      sheet "dup" [ cells [ cell A1 [text "a"] ] {} ]
+      sheet "dup" [ cells [ cell A1 [text "b"] ] {} ]
+    ] {}..`,
+    'two sheets share the id "dup"');
+});
+
+test("title and instructions are program-level and reach the top of the output", async () => {
+  const out = await compileSrc(twoSheets("", "", 'title "T" instructions "I"'));
+  expect(out.title).toBe("T");
+  expect(out.instructions).toBe("I");
+});
+
+test("title inside a sheet is refused, and the error says where it belongs", async () => {
+  await expectError(
+    'sheets [ sheet "s1" [ title "T" cells [ cell A1 [text "a"] ] {} ] ] {}..',
+    "`title` belongs to sheets");
+});
+
+test("params still works when it comes last in the chain", async () => {
+  const out = await compileSrc(
+    `sheets [ sheet "s1" [ cells [ cell A1 [text "{{A1}}"] ] {} ] ] title "T" params { "A1": "1" } {}..`);
+  expect(out.title).toBe("T");
+  expect(out.templateVariablesRecords[0].A1).toBe("1");
+});
+
+test("show-sheet-tabs and hide-sheet-menu reach interaction, and only when written", async () => {
+  const out = await compileSrc(twoSheets("", "", "show-sheet-tabs false hide-sheet-menu false"));
+  expect(out.interaction.showSheetTabs).toBe(false);
+  expect(out.interaction.hideSheetMenu).toBe(false);
+});
+
+test("hiding both the menu and the tabs with several sheets is refused as unreachable", async () => {
+  await expectError(twoSheets("", "", "show-sheet-tabs false hide-sheet-menu true"),
+    "leaves no way to reach sheets beyond the first");
+});
+
+test("hiding both is fine with ONE sheet — there is nothing to navigate to", async () => {
+  await expect(compileSrc(
+    'sheets [ sheet "s1" [ cells [ cell A1 [text "a"] ] {} ] ] show-sheet-tabs false hide-sheet-menu true {}..',
+  )).resolves.toBeTruthy();
+});
+
+// ── Per-sheet grading ──────────────────────────────────────────────────────
+
+const assessed = (points1: number, points2: number) => `sheets [
+  sheet "s1" [ cells [ cell A1 [text "" assess [method "value" expected "1" points ${points1}]] ] {} ]
+  sheet "s2" [ cells [ cell A1 [text "" assess [method "value" expected "2" points ${points2}]] ] {} ]
+] {}..`;
+
+test("points sum across sheets into one total", async () => {
+  const out = await compileSrc(assessed(6, 4));
+  expect(out.validation.points).toBe(10);
+  expect(out.validation.sheets.s1.points).toBe(6);
+  expect(out.validation.sheets.s2.points).toBe(4);
+});
+
+// The silent failure this guards: `getValidation` writes regions[region].rows[rowIndex][col], so
+// run once over a merged grid the second A1 overwrites the first and one sheet's answer key
+// vanishes — leaving a maximum no correct response can reach.
+test("two sheets both holding A1 do not overwrite each other's answer key", async () => {
+  const out = await compileSrc(assessed(6, 4));
+  expect(out.validation.sheets.s1.regions["*"].rows[0].A.assess.expected).toBe("1");
+  expect(out.validation.sheets.s2.regions["*"].rows[0].A.assess.expected).toBe("2");
+});
+
+// Same shape of bug one level up: resolveInheritedPoints looks up columns[key[0]] globally.
+test("a cell does not inherit points from the other sheet's column", async () => {
+  const out = await compileSrc(`sheets [
+    sheet "s1" [
+      columns [ column A [assess [points 9]] ] {}
+      cells [ cell A1 [text "" assess [method "value" expected "1"]] ] {}
+    ]
+    sheet "s2" [ cells [ cell A1 [text "" assess [method "value" expected "2"]] ] {} ]
+  ] {}..`);
+  expect(out.interaction.sheets[0].cells.A1.assess.points).toBe(9);
+  expect(out.interaction.sheets[1].cells.A1.assess.points).toBeUndefined();
+});
+
+// ── Sheet-qualified param names ────────────────────────────────────────────
+
+test("a sheet-qualified param name survives into templateVariablesRecords verbatim", async () => {
+  const out = await compileSrc(twoSheets("", "", 'params { "s2!A1": "7" }'));
+  expect(out.templateVariablesRecords[0]["s2!A1"]).toBe("7");
+});
+
+test("a qualified name pointing at no such sheet is refused, and names the ones that exist", async () => {
+  await expectError(twoSheets("", "", 'params { "s9!A1": "7" }'), 'params: "s9!A1"');
+});
+
+test("a qualified name whose address is malformed is refused", async () => {
+  await expectError(twoSheets("", "", 'params { "s2!nope": "7" }'), "is not a cell address");
+});
+
+test("a bare param name is untouched — it means sheet 1, as it always has", async () => {
+  const out = await compileSrc(twoSheets("", "", 'params { "A1": "7" }'));
+  expect(out.templateVariablesRecords[0].A1).toBe("7");
+});

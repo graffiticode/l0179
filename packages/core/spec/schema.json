@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://graffiticode.org/schemas/l0166.json",
-  "title": "L0166",
+  "$id": "https://graffiticode.org/schemas/l0179.json",
+  "title": "L0179",
   "description": "An authoring language for interactive spreadsheets, with spreadsheet-based assessment as a primary use case.",
   "type": "object",
   "properties": {
@@ -11,9 +11,12 @@
       "properties": {
         "cells": {
           "type": "object",
-          "description": "Cell definitions keyed by cell name",
+          "description": "Cell definitions keyed by cell name. With more than one sheet a key may be qualified with a sheet id, as \"s2!A1\" -- the form a learner response uses, which the host folds back in here.",
           "patternProperties": {
             "^[A-Z]+[0-9]+$": {
+              "$ref": "#/definitions/cell"
+            },
+            "^[A-Za-z0-9_-]+![A-Z]+[0-9]+$": {
               "$ref": "#/definitions/cell"
             }
           },
@@ -48,6 +51,68 @@
             }
           },
           "additionalProperties": false
+        },
+        "sheets": {
+          "type": "array",
+          "description": "Present only when the program has more than one sheet, or a sheet carries a name. The flat cells/columns/rows above mirror the first sheet, so a consumer that predates this key still renders and scores that sheet rather than failing.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Keys this sheet's responses and grading; unique within the program"
+              },
+              "name": {
+                "type": "string",
+                "description": "Label in the tab strip and sheet menu; defaults to the id"
+              },
+              "cells": {
+                "type": "object",
+                "description": "Cell definitions keyed by cell name. With more than one sheet a key may be qualified with a sheet id, as \"s2!A1\" -- the form a learner response uses, which the host folds back in here.",
+                "patternProperties": {
+                  "^[A-Z]+[0-9]+$": {
+                    "$ref": "#/definitions/cell"
+                  },
+                  "^[A-Za-z0-9_-]+![A-Z]+[0-9]+$": {
+                    "$ref": "#/definitions/cell"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "columns": {
+                "type": "object",
+                "description": "Column definitions keyed by column letter",
+                "patternProperties": {
+                  "^[A-Z]+$": {
+                    "$ref": "#/definitions/column"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "rows": {
+                "type": "object",
+                "description": "Row definitions keyed by row number or range",
+                "patternProperties": {
+                  "^([0-9]+|[0-9]+\\.\\.[0-9]+|\\*)$": {
+                    "$ref": "#/definitions/row"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "hideMenu": {
+                "type": "boolean",
+                "description": "Hide this sheet's formula bar"
+              }
+            }
+          }
+        },
+        "showSheetTabs": {
+          "type": "boolean",
+          "description": "Force the tab strip on for one sheet, or off for several"
+        },
+        "hideSheetMenu": {
+          "type": "boolean",
+          "description": "Hide the sheet menu"
         }
       }
     }
@@ -74,13 +139,21 @@
         },
         "align": {
           "type": "string",
-          "enum": ["left", "center", "right"],
+          "enum": [
+            "left",
+            "center",
+            "right"
+          ],
           "description": "Text alignment in the cell",
           "group": "text"
         },
         "vertical-align": {
           "type": "string",
-          "enum": ["top", "middle", "bottom"],
+          "enum": [
+            "top",
+            "middle",
+            "bottom"
+          ],
           "description": "Vertical alignment for the cell",
           "group": "text"
         },
@@ -91,7 +164,12 @@
         },
         "text-decoration": {
           "type": "string",
-          "enum": ["none", "underline", "overline", "line-through"],
+          "enum": [
+            "none",
+            "underline",
+            "overline",
+            "line-through"
+          ],
           "description": "Text decoration for the cell",
           "group": "text"
         },
@@ -102,7 +180,12 @@
         },
         "font-weight": {
           "type": "string",
-          "enum": ["normal", "bold", "lighter", "bolder"],
+          "enum": [
+            "normal",
+            "bold",
+            "lighter",
+            "bolder"
+          ],
           "description": "Font weight for the cell",
           "group": "font"
         },
@@ -118,7 +201,11 @@
         },
         "font-style": {
           "type": "string",
-          "enum": ["normal", "italic", "oblique"],
+          "enum": [
+            "normal",
+            "italic",
+            "oblique"
+          ],
           "description": "Font style for the cell",
           "group": "font"
         },
@@ -142,15 +229,24 @@
       "properties": {
         "method": {
           "type": "string",
-          "enum": ["value", "formula"],
+          "enum": [
+            "value",
+            "formula"
+          ],
           "description": "The assessment method to use for validation (value: compare computed value, formula: compare formula text)"
         },
         "expected": {
           "description": "The expected value for validation (any string is accepted; numeric strings, booleans, and ISO 8601 dates are common)",
           "anyOf": [
-            {"type": "string"},
-            {"type": "number"},
-            {"type": "boolean"}
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "boolean"
+            }
           ]
         },
         "points": {
@@ -167,7 +263,11 @@
       "properties": {
         "align": {
           "type": "string",
-          "enum": ["left", "center", "right"],
+          "enum": [
+            "left",
+            "center",
+            "right"
+          ],
           "description": "Default text alignment for the column",
           "group": "text"
         },
@@ -179,7 +279,12 @@
         },
         "font-weight": {
           "type": "string",
-          "enum": ["normal", "bold", "lighter", "bolder"],
+          "enum": [
+            "normal",
+            "bold",
+            "lighter",
+            "bolder"
+          ],
           "description": "Font weight for the column",
           "group": "font"
         },
@@ -195,7 +300,11 @@
         },
         "font-style": {
           "type": "string",
-          "enum": ["normal", "italic", "oblique"],
+          "enum": [
+            "normal",
+            "italic",
+            "oblique"
+          ],
           "description": "Font style for the column",
           "group": "font"
         },
@@ -206,7 +315,12 @@
         },
         "text-decoration": {
           "type": "string",
-          "enum": ["none", "underline", "overline", "line-through"],
+          "enum": [
+            "none",
+            "underline",
+            "overline",
+            "line-through"
+          ],
           "description": "Text decoration for the column",
           "group": "text"
         },
@@ -217,7 +331,11 @@
         },
         "vertical-align": {
           "type": "string",
-          "enum": ["top", "middle", "bottom"],
+          "enum": [
+            "top",
+            "middle",
+            "bottom"
+          ],
           "description": "Vertical alignment for the column",
           "group": "text"
         },
@@ -245,13 +363,22 @@
       "properties": {
         "align": {
           "type": "string",
-          "enum": ["left", "center", "right"],
+          "enum": [
+            "left",
+            "center",
+            "right"
+          ],
           "description": "Default text alignment for the row",
           "group": "text"
         },
         "font-weight": {
           "type": "string",
-          "enum": ["normal", "bold", "lighter", "bolder"],
+          "enum": [
+            "normal",
+            "bold",
+            "lighter",
+            "bolder"
+          ],
           "description": "Font weight for the row",
           "group": "font"
         },
@@ -267,7 +394,11 @@
         },
         "font-style": {
           "type": "string",
-          "enum": ["normal", "italic", "oblique"],
+          "enum": [
+            "normal",
+            "italic",
+            "oblique"
+          ],
           "description": "Font style for the row",
           "group": "font"
         },
@@ -278,7 +409,12 @@
         },
         "text-decoration": {
           "type": "string",
-          "enum": ["none", "underline", "overline", "line-through"],
+          "enum": [
+            "none",
+            "underline",
+            "overline",
+            "line-through"
+          ],
           "description": "Text decoration for the row",
           "group": "text"
         },
@@ -289,7 +425,11 @@
         },
         "vertical-align": {
           "type": "string",
-          "enum": ["top", "middle", "bottom"],
+          "enum": [
+            "top",
+            "middle",
+            "bottom"
+          ],
           "description": "Vertical alignment for the row",
           "group": "text"
         },
@@ -317,7 +457,11 @@
       "properties": {
         "align": {
           "type": "string",
-          "enum": ["left", "center", "right"],
+          "enum": [
+            "left",
+            "center",
+            "right"
+          ],
           "description": "Default text alignment for the region",
           "group": "text"
         },
@@ -334,7 +478,12 @@
         },
         "font-weight": {
           "type": "string",
-          "enum": ["normal", "bold", "lighter", "bolder"],
+          "enum": [
+            "normal",
+            "bold",
+            "lighter",
+            "bolder"
+          ],
           "description": "Font weight for the region",
           "group": "font"
         },
@@ -350,7 +499,11 @@
         },
         "font-style": {
           "type": "string",
-          "enum": ["normal", "italic", "oblique"],
+          "enum": [
+            "normal",
+            "italic",
+            "oblique"
+          ],
           "description": "Font style for the region",
           "group": "font"
         },
@@ -361,7 +514,12 @@
         },
         "text-decoration": {
           "type": "string",
-          "enum": ["none", "underline", "overline", "line-through"],
+          "enum": [
+            "none",
+            "underline",
+            "overline",
+            "line-through"
+          ],
           "description": "Text decoration for the region",
           "group": "text"
         },
@@ -372,7 +530,11 @@
         },
         "vertical-align": {
           "type": "string",
-          "enum": ["top", "middle", "bottom"],
+          "enum": [
+            "top",
+            "middle",
+            "bottom"
+          ],
           "description": "Vertical alignment for the region",
           "group": "text"
         },

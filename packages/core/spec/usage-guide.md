@@ -27,10 +27,12 @@ For values that change per render, describe them as parameters: a list of choice
 range with a step. Each rendered instance draws one combination, and an assessed cell whose
 expectation is a formula stays correct across all of them.
 
-In scope: spreadsheet layout, cell formatting, formulas, assessed cells, per-cell points, and
-parameterized values. Out of scope: authoring question items (multiple choice, reading passages,
-answer keys, rubric-scored prose), charts, pivot tables, cross-sheet references, data imports,
-and macros. A spreadsheet can be embedded INTO an assessment item by a host dialect; authoring
+In scope: spreadsheet layout, cell formatting, formulas, assessed cells, per-cell points,
+parameterized values, and several sheets in one item — tabs and a sheet menu to move between them.
+Out of scope: authoring question items (multiple choice, reading passages, answer keys,
+rubric-scored prose), charts, pivot tables, cross-sheet formula references, data imports, and
+macros. Note the difference on that second-to-last one: several sheets are fine, but a formula on
+one sheet cannot read a cell on another. A spreadsheet can be embedded INTO an assessment item by a host dialect; authoring
 that item is that dialect's job, not this one's.
 
 ## Writing a request
