@@ -69,6 +69,69 @@ both compile errors, because a bare number is not a CSS size and a browser disca
 An attribute a container does not accept is a compile error naming what it does take, so put
 each attribute on the thing it describes: `width` belongs to a column, not to the sheet.
 
+**`title` and `instructions` are content, not chrome.** Both default to empty, and the sheet draws
+a heading panel above the grid only when at least one of them is non-empty. Write them when the
+request supplies or asks for them. Inventing a title puts a heading on the page nobody asked for.
+
+### Which level wins
+
+The same presentation attribute may be set on a cell, on its column, and on its row. Each cell
+resolves all three, most specific first: **cell beats column beats row.**
+
+Note that ordering, because `points` does not share it — it inherits **cell beats row beats
+column** (see Assessed cells). The two are genuinely different; do not reason from one to the
+other.
+
+A column or row attribute reaches exactly the cells that exist. The grid is sized from the
+populated cells, so `column A [...]` covers A1 down to the last populated row and stops there —
+it cannot leak past the sheet. Setting an attribute on the column is therefore equivalent to
+repeating it on every cell of that column, and is the better way to write it.
+
+### Borders
+
+`border` takes two forms and they do not behave alike:
+
+- **A CSS string** — `border "1px solid black"` — draws a ring around **each cell that carries
+  it**, on all four sides, in that width and colour. It cannot outline a region: setting it on
+  fifteen cells, or on the three columns those cells live in, draws fifteen rings and no
+  rectangle.
+- **A side list** — `border "top"`, `border "top,left"`, `border "all"` — draws only the named
+  sides, and is the only form that **unions**: the sides set on the row, on the column and on the
+  cell are added together instead of overriding one another. Sides render as a 2px grey edge and
+  take no colour or width of their own.
+
+So an outline around a region is drawn from its edges, not from its cells:
+
+```
+sheets [
+  sheet "s1" [
+    columns [
+      column A [border "left"]
+      column C [border "right"]
+    ] {}
+    rows [
+      row 1 [border "top" font-weight "bold"]
+      row 5 [border "bottom"]
+    ] {}
+    cells [
+      cell A1 [text "Sample ID"] cell B1 [text "Nitrogen ppm"] cell C1 [text "Phosphorus ppm"]
+      cell A2 [text "S-01"] cell B2 [text "42"] cell C2 [text "18"]
+      cell A3 [text "S-02"] cell B3 [text "37"] cell C3 [text "22"]
+      cell A4 [text "S-03"] cell B4 [text "55"] cell C4 [text "15"]
+      cell A5 [text "S-04"] cell B5 [text "29"] cell C5 [text "31"]
+    ] {}
+  ]
+] {
+  "v": "0.0.1"
+}..
+```
+
+A1 unions its row's `top` with its column's `left`; C5 unions `bottom` with `right`; B3 gets
+neither. Every cell of the region gets a ring instead if you write the CSS form.
+
+Border values are **not checked** at compile time. `border "sideways"` compiles and then renders
+nothing at all, so use exactly `top`, `bottom`, `left`, `right`, or `all`.
+
 ## Cell text and formulas
 
 `text` holds either a literal value or a formula beginning with `=`:
