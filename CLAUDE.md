@@ -37,8 +37,9 @@ Single test: `npm run -w packages/core test -- -t "the starter template compiles
 Vitest must run with `packages/core` as cwd — the tests read `spec/*` by relative path.
 
 `npm run assemble` (part of `build`) wipes and repopulates `packages/api/static/` from
-`packages/core/dist/static/` + `packages/view/dist-embed/`. It is generated output, gitignored;
-never edit files there — edit `packages/core/spec/` or the view sources.
+`packages/core/dist/static/` + `packages/view/dist-embed/` + `packages/integrations/learnosity/dist/`.
+It is generated output, gitignored; never edit files there — edit `packages/core/spec/`, the view
+sources, or the integration sources.
 
 ### Differential test
 
@@ -70,6 +71,29 @@ Three workspaces:
   `@graffiticode/l0000-view` as `<View Form={Form} reduce={reduce} />`. Two Vite builds: the
   library (`vite.config.ts`, React external) and the standalone `/form` embed
   (`vite.embed.config.ts` → `dist-embed/`).
+
+- **`packages/integrations/learnosity`** (private) — the Learnosity custom question type.
+  The lifecycle lives in `@graffiticode/learnosity-cqt`, shared with every Graffiticode language
+  that ships one; this workspace is only the bindings. Two Vite builds, because Learnosity loads
+  each bundle as a plain script that must call `LearnosityAmd.define` on load, and IIFE takes one
+  entry: `vite.config.ts` (question) and `vite.scorer.config.ts`.
+
+  Three things here are load-bearing:
+
+  - **The output filenames are a published contract.** L0176's `buildCustom`
+    (`packages/core/src/question-types.ts`) synthesizes
+    `https://l0179.graffiticode.org/{question.js,scorer.js,question.css}` from the language id.
+    Vite would name the stylesheet `style.css`; `assetFileNames` renames it. Moving any of these
+    breaks every L0179 item in a Learnosity item bank.
+  - **`define: { "process.env.NODE_ENV": "production" }` is not boilerplate.** Vite's lib mode
+    preserves `process.env.NODE_ENV` so a library's consumer can substitute it. These are not
+    libraries — nothing downstream substitutes anything. Without it React's development build
+    ships *and runs*, and the bundles are ~40% larger.
+  - **`question.ts` and `scorer.ts` are separate entries on purpose.** Learnosity runs the scorer
+    server-side too, so it must not depend on the renderer.
+
+  `question.ts` imports `Form` and the scoring functions from `@graffiticode/l0179-view` rather
+  than reaching past it into L0166 — measured at ~8 kB, since the shared `View` tree-shakes away.
 
   `src/components/form/reduce.ts` is **not optional wiring** — it is the half of L0166's state
   protocol that is not generic. L0166's Form reports an edited cell as

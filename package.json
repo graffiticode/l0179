@@ -3,19 +3,20 @@
   "private": true,
   "type": "module",
   "version": "0.0.0",
-  "description": "L0179 — a Graffiticode dialect for interactive spreadsheets, in the attribute-list style",
+  "description": "L0179 \u2014 a Graffiticode dialect for interactive spreadsheets, in the attribute-list style",
   "workspaces": [
     "packages/core",
     "packages/api",
-    "packages/view"
+    "packages/view",
+    "packages/integrations/learnosity"
   ],
   "engines": {
     "node": ">=22"
   },
   "packageManager": "npm@10.9.2",
   "scripts": {
-    "build": "npm run -w packages/core build && npm run -w packages/core build-static && npm run -w packages/api build && npm run -w packages/view build && npm run -w packages/view build:embed && npm run assemble",
-    "assemble": "shx rm -rf packages/api/static && shx mkdir -p packages/api/static && shx cp -r packages/core/dist/static/. packages/api/static/ && shx cp -r packages/view/dist-embed/. packages/api/static/",
+    "build": "npm run -w packages/core build && npm run -w packages/core build-static && npm run -w packages/api build && npm run -w packages/view build && npm run -w packages/view build:embed && npm run -w packages/integrations/learnosity build && npm run assemble",
+    "assemble": "shx rm -rf packages/api/static && shx mkdir -p packages/api/static && shx cp -r packages/core/dist/static/. packages/api/static/ && shx cp -r packages/view/dist-embed/. packages/api/static/ && shx cp -r packages/integrations/learnosity/dist/. packages/api/static/",
     "dev": "npm run -w packages/api dev",
     "start": "npm run -w packages/api start",
     "test": "npm run -w packages/core test",
