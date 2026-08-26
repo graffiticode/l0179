@@ -69,6 +69,12 @@ both compile errors, because a bare number is not a CSS size and a browser disca
 An attribute a container does not accept is a compile error naming what it does take, so put
 each attribute on the thing it describes: `width` belongs to a column, not to the sheet.
 
+**Scope an attribute where the request scopes it.** "the formula in B7, right aligned" describes
+one cell, so it is `cell B7 [... align "right"]` — not `column B [align "right"]`, which says
+something about every cell in the column that the request never said. Reach for a column or row
+only when the request describes the column or the row ("right-align the amounts", "bold the header
+row").
+
 **`title` and `instructions` are content, not chrome.** Both default to empty, and the sheet draws
 a heading panel above the grid only when at least one of them is non-empty — so writing either one
 adds a visible panel above the sheet.
@@ -195,5 +201,10 @@ a param with `{{NAME}}`.
 
 - Address cells as `A1`, columns as `A`, rows as a number (`row 1`) or a quoted region
   (`row "*"` for every row).
+- **Write cells in reading order** — row by row, left to right within each row: `A1 B1 A2 B2 …`,
+  not all of column A followed by all of column B. Order carries no meaning to the compiler (the
+  output is keyed by cell name), which is exactly why it should be fixed by convention: an edit
+  that re-orders the cells it did not change produces a diff the size of the whole sheet, and every
+  version of that item is then unreadable against the one before it.
 - End the program with the version record and `..`: `] {\n  "v": "0.0.1"\n}..`
 - Give the sheet a short id: `sheet "s1"`.
