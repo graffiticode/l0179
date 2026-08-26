@@ -7,9 +7,12 @@ COPY package*.json ./
 COPY packages/core/package*.json ./packages/core/
 COPY packages/api/package*.json ./packages/api/
 COPY packages/view/package*.json ./packages/view/
+COPY packages/integrations/learnosity/package*.json ./packages/integrations/learnosity/
 RUN npm ci
 
-# Build: core (tsc) + static assets + view library/embed, assembled into packages/api/static.
+# Build: core (tsc) + static assets + view library/embed + the Learnosity bundles, assembled
+# into packages/api/static. Every workspace's manifest must be copied above, or npm ci skips
+# that workspace's dependencies and the build fails on the first import it cannot resolve.
 COPY . .
 RUN npm run build
 
