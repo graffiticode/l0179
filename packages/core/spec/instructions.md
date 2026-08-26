@@ -70,8 +70,16 @@ An attribute a container does not accept is a compile error naming what it does 
 each attribute on the thing it describes: `width` belongs to a column, not to the sheet.
 
 **`title` and `instructions` are content, not chrome.** Both default to empty, and the sheet draws
-a heading panel above the grid only when at least one of them is non-empty. Write them when the
-request supplies or asks for them. Inventing a title puts a heading on the page nobody asked for.
+a heading panel above the grid only when at least one of them is non-empty — so writing either one
+adds a visible panel above the sheet.
+
+Write a `title` **only when the request asks for one in as many words**: it names a title or a
+heading, or gives the text to use. A subject mentioned in passing is not a request for a title.
+"Create a worksheet tracking freezer temperature checks" says what the sheet is for and asks for
+no heading, so that sheet gets no `title`. When in doubt there is no doubt: no title.
+
+`instructions` follows the same test — write them when the request says what the learner should be
+told, never to restate the task back to them.
 
 ### Which level wins
 
