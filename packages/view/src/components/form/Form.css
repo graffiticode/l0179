@@ -258,3 +258,17 @@ main {
 .gc-sheet-tab.is-active:hover {
   background: #d9e7fd;
 }
+
+/* The column-resize handle, hidden.
+ *
+ * `columnResizing()` has to stay — it renders the <colgroup> that carries every authored column
+ * width — but the dragging it offers leads nowhere: a resized width is not carried by any action,
+ * so it never reaches the model or the learner's response and is discarded on the next re-seed.
+ * Hiding the handle removes the affordance while keeping the widths. */
+.ProseMirror .column-resize-handle {
+  display: none;
+}
+
+.ProseMirror.resize-cursor {
+  cursor: text;
+}

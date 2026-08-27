@@ -9,10 +9,11 @@
 
 import React, { useState, useEffect, useRef } from 'react'; React;
 
+// Only the two stylesheets that describe something on screen: the editor surface and the table.
+// prosemirror-menu, -example-setup and -gapcursor were imported for their CSS alone — there is no
+// ProseMirror menu, no example setup and no gap cursor here — and were the only reason those three
+// packages were dependencies at all.
 import 'prosemirror-view/style/prosemirror.css';
-import 'prosemirror-menu/style/menu.css';
-import 'prosemirror-example-setup/style/style.css';
-import 'prosemirror-gapcursor/style/gapcursor.css';
 import "prosemirror-tables/style/tables.css";
 
 import { EditorView } from 'prosemirror-view';
@@ -43,8 +44,8 @@ import {
   TableMap,
 } from "prosemirror-tables";
 import {
-  tableEditing,
   columnResizing,
+  tableEditing,
   tableNodes,
   fixTables,
 //  CellSelection,
@@ -566,10 +567,8 @@ const getCells = (cellExprs, state) => {
         to: pos + node.nodeSize,
         align: node.attrs.align || node.attrs.justify,
         background: node.attrs.background,
-        'background-color': node.attrs['background-color'] || node.attrs.backgroundColor,
-        backgroundColor: node.attrs.backgroundColor || node.attrs['background-color'], // Store in both formats for compatibility
-        'font-weight': node.attrs['font-weight'] || node.attrs.fontWeight,
-        fontWeight: node.attrs.fontWeight || node.attrs['font-weight'], // Store in both formats for compatibility
+        'background-color': node.attrs['background-color'],
+        'font-weight': node.attrs['font-weight'],
         format: node.attrs.format,
         numberFormat: node.attrs.numberFormat,
         assess: node.attrs.assess,
@@ -595,39 +594,13 @@ const schema = new Schema({
       tableGroup: 'block',
       cellContent: 'paragraph',
       cellAttributes: {
-        name: {
-          default: null,
-          getFromDOM(dom) {
-            return dom.dataset.name || null;
-          },
-          setDOMAttr(value, attrs) {
-            if (value) {
-              attrs.dataset = `data-name: ${value};`;
-            }
-          },
-        },
-        format: {
-          default: null,
-          getFromDOM(dom) {
-            return dom.dataset.format || null;
-          },
-          setDOMAttr(value, attrs) {
-            if (value) {
-              attrs.dataset = `data-format: ${value};`;
-            }
-          },
-        },
-        assess: {
-          default: null,
-          getFromDOM(dom) {
-            return JSON.parse(dom.dataset.format) || null;
-          },
-          setDOMAttr(value, attrs) {
-            if (value) {
-              attrs.dataset = `data-format: ${JSON.stringify(value)};`;
-            }
-          },
-        },
+        // These three are read off the node by the renderer; they are deliberately NOT serialized
+        // to the DOM. Their previous serializers were broken and never ran — the doc is always
+        // built from JSON, never parsed back from the DOM — and they left an attribute literally
+        // named `dataset` on every cell.
+        name: { default: null },
+        format: { default: null },
+        assess: { default: null },
         align: {
           default: null,
           getFromDOM(dom) {
@@ -681,29 +654,7 @@ const schema = new Schema({
               attrs.style = (attrs.style || '') + `background-color: ${value};`;
           },
         },
-        // Backward compatibility: support camelCase
-        backgroundColor: {
-          default: null,
-          getFromDOM(dom) {
-            return dom.style.backgroundColor || null;
-          },
-          setDOMAttr(value, attrs) {
-            if (value)
-              attrs.style = (attrs.style || '') + `background-color: ${value};`;
-          },
-        },
         'font-weight': {
-          default: null,
-          getFromDOM(dom) {
-            return dom.style.fontWeight || null;
-          },
-          setDOMAttr(value, attrs) {
-            if (value)
-              attrs.style = (attrs.style || '') + `font-weight: ${value};`;
-          },
-        },
-        // Backward compatibility: support camelCase
-        fontWeight: {
           default: null,
           getFromDOM(dom) {
             return dom.style.fontWeight || null;
@@ -723,16 +674,6 @@ const schema = new Schema({
               attrs.style = (attrs.style || '') + `font-size: ${value};`;
           },
         },
-        fontSize: {
-          default: null,
-          getFromDOM(dom) {
-            return dom.style.fontSize || null;
-          },
-          setDOMAttr(value, attrs) {
-            if (value)
-              attrs.style = (attrs.style || '') + `font-size: ${value};`;
-          },
-        },
         'font-family': {
           default: null,
           getFromDOM(dom) {
@@ -743,27 +684,7 @@ const schema = new Schema({
               attrs.style = (attrs.style || '') + `font-family: ${value};`;
           },
         },
-        fontFamily: {
-          default: null,
-          getFromDOM(dom) {
-            return dom.style.fontFamily || null;
-          },
-          setDOMAttr(value, attrs) {
-            if (value)
-              attrs.style = (attrs.style || '') + `font-family: ${value};`;
-          },
-        },
         'font-style': {
-          default: null,
-          getFromDOM(dom) {
-            return dom.style.fontStyle || null;
-          },
-          setDOMAttr(value, attrs) {
-            if (value)
-              attrs.style = (attrs.style || '') + `font-style: ${value};`;
-          },
-        },
-        fontStyle: {
           default: null,
           getFromDOM(dom) {
             return dom.style.fontStyle || null;
@@ -793,27 +714,7 @@ const schema = new Schema({
               attrs.style = (attrs.style || '') + `text-decoration: ${value};`;
           },
         },
-        textDecoration: {
-          default: null,
-          getFromDOM(dom) {
-            return dom.style.textDecoration || null;
-          },
-          setDOMAttr(value, attrs) {
-            if (value)
-              attrs.style = (attrs.style || '') + `text-decoration: ${value};`;
-          },
-        },
         'vertical-align': {
-          default: null,
-          getFromDOM(dom) {
-            return dom.style.verticalAlign || null;
-          },
-          setDOMAttr(value, attrs) {
-            if (value)
-              attrs.style = (attrs.style || '') + `vertical-align: ${value};`;
-          },
-        },
-        verticalAlign: {
           default: null,
           getFromDOM(dom) {
             return dom.style.verticalAlign || null;
@@ -880,7 +781,9 @@ const schema = new Schema({
       },
     }),
   ),
-  marks: baseSchema.spec.marks,
+  // No marks. The language expresses emphasis as cell attributes (`font-weight`, `font-style`),
+  // not as inline document marks, so the base schema's link/em/strong/code were unreachable.
+  marks: {},
 });
 
 const findTable = $pos => {
@@ -1513,9 +1416,14 @@ const makeTableHeadersReadOnlyPlugin = (formState) => new Plugin({
       return true;
     }
 
-    // Check if this transaction would modify content inside a table header
+    // Any step at all inside a header is refused.
+    //
+    // The `stepType === "setSelection"` test below reads as "allow selection changes", but a
+    // selection is NOT a step in ProseMirror — it rides alongside them — so nothing ever matches
+    // and `isSelectionOnly` is false whenever there is a step. That is the behaviour relied on;
+    // selection-only transactions have `steps.length === 0` and never reach here. Left as-is
+    // because making the test mean what it says would change what gets through.
     if (tr.steps.length > 0 && isInsideTableHeader(state)) {
-      // Block content modification transactions, but allow selection changes
       const isSelectionOnly = tr.steps.every(step => step.toJSON().stepType === "setSelection");
       return isSelectionOnly;
     }
@@ -1651,7 +1559,8 @@ const makeProtectedCellsPlugin = (tooltipHandler) => new Plugin({
       // Check if any step would affect a protected cell
       for (const step of tr.steps) {
         const stepJSON = step.toJSON();
-        // Block any content modification steps when in a protected cell
+        // As in the headers plugin: a selection is not a step, so this test never excludes
+        // anything and the rule is really "any step at all while inside a protected cell".
         if (stepJSON.stepType !== "setSelection" && isInsideProtectedCell(state)) {
           return false;
         }
@@ -2155,40 +2064,6 @@ const buildCellPlugin = formState => {
   return self;
 }
 
-class ParagraphView {
-  public dom;
-  public contentDOM;
-  private value = "";
-  private textContent = "";
-  private hasFocus = false;
-  constructor(node, view) {
-    view = view;
-    this.dom = document.createElement("div");
-    this.dom.className = "custom-paragraph";
-    this.contentDOM = document.createElement("p");
-    this.dom.appendChild(this.contentDOM);
-    if (node.content.size == 0) this.dom.classList.add("empty")
-  }
-  update(node) {
-    if (node.type.name !== "paragraph") {
-      return false
-    }
-    this.dom.classList.remove("empty");
-    if (this.hasFocus) {
-      if (node.content.size > 0) {
-        this.textContent = node.textContent;
-        this.value = this.hasFocus && this.textContent.indexOf("sum") > 0 && "300" || this.textContent;
-        this.contentDOM.textContent = this.textContent;
-      } else {
-        this.contentDOM.textContent = this.value || this.contentDOM.textContent;
-        }
-    } else {
-      this.dom.classList.add("empty")
-    }
-    return true
-  }
-}
-
 const buildCell = ({ col, row, attrs, colsAttrs }) => {
   colsAttrs = colsAttrs || {};
   const cell = row[col];
@@ -2196,9 +2071,9 @@ const buildCell = ({ col, row, attrs, colsAttrs }) => {
   const rowspan = 1;
   const colwidth = col === "_" && [40] || (colsAttrs[col]?.width ? [colsAttrs[col].width] : null);
   // Check cell's own background-color first (from attrs), then column's, then row's
-  const background = cell?.attrs?.['background-color'] || cell?.attrs?.backgroundColor ||
-                   colsAttrs[col]?.['background-color'] || colsAttrs[col]?.backgroundColor ||
-                   attrs?.['background-color'] || attrs?.backgroundColor;
+  const background = cell?.attrs?.['background-color'] ||
+                   colsAttrs[col]?.['background-color'] ||
+                   attrs?.['background-color'];
 
   const { text } = cell || {};
   const textContent = text ? [
@@ -2231,29 +2106,24 @@ const buildCell = ({ col, row, attrs, colsAttrs }) => {
 
   // Filter out font-size for header cells
   // Ensure we have valid objects to spread (handle undefined)
-  // Also filter out backgroundColor from attrs as it's handled separately as 'background'
-  const { backgroundColor: _bgColor, ...restAttrs } = attrs || {};
-  const filteredAttrs = isHeader ? { ...restAttrs } : restAttrs;
+  const filteredAttrs = isHeader ? { ...(attrs || {}) } : (attrs || {});
 
   // Filter out background-color from column attrs as it's handled separately
-  const { 'background-color': _colBg, backgroundColor: _colBgColor, ...restColsAttrs } = colsAttrs[col] || {};
+  const { 'background-color': _colBg, ...restColsAttrs } = colsAttrs[col] || {};
   const filteredColsAttrs = isHeader ? { ...restColsAttrs } : restColsAttrs;
 
   // Extract only the attributes from the cell, excluding text and type
   const { text: _text, type: _type, attrs: cellAttrsObj, ...cellRest } = cell || {};
   // Filter out background properties from the cell's attrs since they're handled separately
-  const { 'background-color': _cellBg, backgroundColor: _cellBgColor, background: _cellBgProp, ...filteredCellAttrs } = cellAttrsObj || {};
+  const { 'background-color': _cellBg, background: _cellBgProp, ...filteredCellAttrs } = cellAttrsObj || {};
   const filteredCell = isHeader ? { ...(cell || {}) } : { ...cellRest, ...filteredCellAttrs };
 
 
   if (isHeader) {
     // Remove font-size related properties from headers
     delete filteredAttrs?.['font-size'];
-    delete filteredAttrs?.fontSize;
     delete filteredColsAttrs?.['font-size'];
-    delete filteredColsAttrs?.fontSize;
     delete filteredCell?.['font-size'];
-    delete filteredCell?.fontSize;
 
     // Remove border properties from headers to prevent row/column borders from appearing on labels
     delete filteredAttrs?.border;
@@ -2267,7 +2137,6 @@ const buildCell = ({ col, row, attrs, colsAttrs }) => {
       colspan,
       rowspan,
       colwidth,
-      width: "50px",
       height: cellHeight,
       background,
       // Set readonly attribute for header cells
@@ -2302,7 +2171,7 @@ const buildTable = ({ cols, rows, attrs, colsAttrs }) => {
 };
 
 const buildDocFromTable = ({ cols, rows, colsAttrs, rowsAttrs }) => {
-  const attrs = applyRules({ cols, rows, rowsAttrs });
+  const attrs = applyRules({ rows, rowsAttrs });
   return {
     "type": "doc",
     "content": [
@@ -2313,15 +2182,11 @@ const buildDocFromTable = ({ cols, rows, colsAttrs, rowsAttrs }) => {
   }
 };
 
-const applyRules = ({ cols, rows, rowsAttrs }) => {
-  const argsCols = cols.slice(0, cols.length - 1);
-//  const totalCol = cols[cols.length - 1];
+// Despite the name, this only lifts row attributes into a per-row-index array; it used to also
+// sum each row into a `total` that was never read.
+const applyRules = ({ rows, rowsAttrs }) => {
   const rowAttrs = []
   rows.forEach((row, rowIndex) => {
-    let total = 0;
-    argsCols.forEach(col => {
-      total += +row[col];
-    });
     if (rowAttrs[rowIndex] === undefined) {
       rowAttrs[rowIndex] = {};
     }
@@ -2398,22 +2263,15 @@ const getCell = (row, col, cells, columns, rows) => {
         // Extract attributes from merged attrs structure for ProseMirror
         underline: mergedAttrs?.underline,
         border: mergedAttrs?.border,
-        'font-weight': mergedAttrs?.['font-weight'] || mergedAttrs?.fontWeight,
-        fontWeight: mergedAttrs?.fontWeight || mergedAttrs?.['font-weight'], // Backward compatibility
-        'font-size': mergedAttrs?.['font-size'] || mergedAttrs?.fontSize,
-        fontSize: mergedAttrs?.fontSize || mergedAttrs?.['font-size'], // Backward compatibility
-        'font-family': mergedAttrs?.['font-family'] || mergedAttrs?.fontFamily,
-        fontFamily: mergedAttrs?.fontFamily || mergedAttrs?.['font-family'], // Backward compatibility
-        'font-style': mergedAttrs?.['font-style'] || mergedAttrs?.fontStyle,
-        fontStyle: mergedAttrs?.fontStyle || mergedAttrs?.['font-style'], // Backward compatibility
+        'font-weight': mergedAttrs?.['font-weight'],
+        'font-size': mergedAttrs?.['font-size'],
+        'font-family': mergedAttrs?.['font-family'],
+        'font-style': mergedAttrs?.['font-style'],
         color: mergedAttrs?.color,
-        'text-decoration': mergedAttrs?.['text-decoration'] || mergedAttrs?.textDecoration,
-        textDecoration: mergedAttrs?.textDecoration || mergedAttrs?.['text-decoration'], // Backward compatibility
-        'vertical-align': mergedAttrs?.['vertical-align'] || mergedAttrs?.verticalAlign,
-        verticalAlign: mergedAttrs?.verticalAlign || mergedAttrs?.['vertical-align'], // Backward compatibility
+        'text-decoration': mergedAttrs?.['text-decoration'],
+        'vertical-align': mergedAttrs?.['vertical-align'],
         background: mergedAttrs?.background,
-        'background-color': mergedAttrs?.['background-color'] || mergedAttrs?.backgroundColor,
-        backgroundColor: mergedAttrs?.backgroundColor || mergedAttrs?.['background-color'], // Backward compatibility
+        'background-color': mergedAttrs?.['background-color'],
         align: mergedAttrs?.align || mergedAttrs?.justify,
         format: mergedAttrs?.format,
         assess: mergedAttrs?.assess,
@@ -2500,6 +2358,13 @@ export const TableEditor = ({ state, onEditorViewChange = undefined }: any) => {
   const cellPlugin = buildCellPlugin(state);
   const menuPlugin = buildMenuPlugin(state);
   const plugins = [
+    // columnResizing() is NOT optional, and is not only a drag affordance: it renders the
+    // <colgroup>/<col> elements that carry `colwidth`. Removing it drops every authored column
+    // width — measured, a 150px column became 462px and the table stretched to fill its container.
+    //
+    // The dragging it also enables is a separate problem: a resized width reaches no action, so it
+    // never gets into the model or the response and is discarded on the next re-seed. The handle
+    // is hidden in Form.css instead, which removes the affordance and keeps the rendering.
     columnResizing(),
     tableEditing(),
     history(),
@@ -2555,9 +2420,6 @@ export const TableEditor = ({ state, onEditorViewChange = undefined }: any) => {
         //   editorState: editorState.toJSON()
         // });
       },
-      nodeViews: {
-        paragraph(node, view) { return new ParagraphView(node, view) }
-      }
     });
     setEditorView(editorView);
     onEditorViewChange?.(editorView);

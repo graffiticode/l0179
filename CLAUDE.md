@@ -102,6 +102,14 @@ Three workspaces:
   `docs/shed-l0166.md`. `packages/core` never depended on it; the differential test reaches the
   sibling *checkout* by path, which is a test fixture, not a dependency.
 
+  `src/sheet/` is the spreadsheet ENGINE — evaluation, dependencies, cycle detection, formatting,
+  addresses, and the colour/border policy. It was lifted out of `TableEditor.tsx`, where it sat
+  among the ProseMirror plumbing importing none of it, for the same two reasons the scoring split
+  happened: it is the half that survives any renderer, and it had no tests while it was tangled in
+  the editor. Not to be confused with `src/scoring/`, which decides whether an answer is RIGHT;
+  `src/sheet/` decides what a cell IS. See `docs/prosemirror.md` for why the renderer under it is
+  on notice.
+
   The library builds **two entries**, and the second is load-bearing: `src/scoring/` is published
   on its own `./scoring` subpath so the Learnosity scorer can import it without the renderer.
   Tree-shaking the root entry does not work — it is one pre-bundled file whose ProseMirror
@@ -324,3 +332,5 @@ Two decision records, not API docs:
 - `console` — `docs/language-authoring-style.md` (the attribute-list style this language follows,
   referenced throughout the source) and `training/l0166-training-examples.md` (the corpus).
 - `l0176` — a sibling in the same style; several files here are ported from it.
+- `console` also consumes the grid's `focus` action (`src/components/FormIFrame.tsx`) to drive a
+  properties panel keyed on `${type}-${name}`, so those payloads are a cross-repo contract.

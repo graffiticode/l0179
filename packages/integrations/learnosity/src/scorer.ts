@@ -4,7 +4,12 @@
  *
  * A separate entry from question.ts because Learnosity also runs this bundle server-side.
  *
- * It IS free of the renderer, and the import path below is what guarantees that.
+ * It is free of the SPREADSHEET, and the import path below is what guarantees that. It is not yet
+ * free of React: `createScorer` is imported from the `@graffiticode/learnosity-cqt` root barrel,
+ * which re-exports `createQuestion`, which imports `react-dom/client` — and that package declares
+ * no `sideEffects`, so nothing can drop it. `react-dom.production.min` is roughly half this
+ * bundle. Fixing it needs a scorer subpath from that shared package; it does not stop the scorer
+ * loading server-side, which is verified in bare Node.
  *
  * Scoring is published on its own subpath, `@graffiticode/l0179-view/scoring`, which pulls in no
  * React and no ProseMirror. Importing from the package ROOT instead does not work, and that is

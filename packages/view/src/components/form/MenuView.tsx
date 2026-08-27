@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
 import React from "react"; React;
-import { toggleMark } from "prosemirror-commands";
 import { FormulaBar } from "./FormulaBar";
 
 function classNames(...classes) {
@@ -8,40 +7,15 @@ function classNames(...classes) {
   return className;
 }
 
-const items = [{
-  name: "B",
-  className: "font-bold",
-  selected: false,
-  command: schema => toggleMark(schema.marks.strong),
-  mark: schema => schema.marks.strong,
-}, {
-  name: "I",
-  className: "italic",
-  selected: false,
-  command: schema => toggleMark(schema.marks.em),
-  mark: schema => schema.marks.em,
-}];
-
-const isMarkActive = ({ state, mark }) => {
-  const { from, $from, to, empty } = state.selection;
-  if (empty) {
-    return !!mark.isInSet(state.storedMarks || $from.marks());
-  } else {
-    return state.doc.rangeHasMark(from, to, mark);
-  }
-}
-
+/**
+ * The bar above the grid. It holds the formula input and nothing else.
+ *
+ * It used to also track whether bold/italic marks were active on the selection, for two buttons
+ * that have been commented out since L0166. The language has no inline marks — emphasis is a cell
+ * attribute — so the schema no longer declares any, and that tracking would now throw on an
+ * undefined `schema.marks.strong`.
+ */
 export const MenuView = ({ className, editorView, hideMenu = false }) => {
-  // const toggle = item => {
-  //   item.selected = !item.selected;
-  //   item.command(editorView.state.schema)(editorView.state, editorView.dispatch);
-  // };
-  editorView && items.forEach(item =>
-    item.selected = isMarkActive({
-      state: editorView.state,
-      mark: item.mark(editorView.state.schema)
-    })
-  );
   // Don't render anything if hideMenu is true
   if (hideMenu) {
     return null;
