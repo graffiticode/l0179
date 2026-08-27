@@ -59,88 +59,29 @@ import { MenuView } from './MenuView';
 import { ProtectedCellTooltip } from './ProtectedCellTooltip';
 //import { debounce } from "lodash";
 
-import { TransLaTeX, spreadsheetExpanders } from "@graffiticode/translatex";
-import { evalRules, cellNameRules, formatRules } from '../../scoring/translatex-rules.js';
+// Scoring lives in ../../scoring, which is DOM-free so the Learnosity scorer bundle can load it
+// server-side. It was lifted OUT of this file rather than copied alongside it: two implementations
+// of "is this answer right" is exactly the drift that would mark a learner wrong in the grid and
+// right in the scorer. `scoreCells` runs here on every transaction, to paint assess feedback live.
+import { scoreCells } from '../../scoring/index.js';
 
-// Value normalization and scoring live in ../../scoring, which is DOM-free so the Learnosity
-// scorer bundle can load it server-side. They were lifted OUT of this file rather than copied
-// alongside it: two implementations of "is this answer right" is exactly the drift that would
-// mark a learner wrong in the grid and right in the scorer.
+// The spreadsheet engine — evaluation, dependencies, cycles, formatting. It used to live in THIS
+// file, interleaved with the ProseMirror plumbing while importing none of it; see
+// ../../sheet/index.ts. That this file no longer imports TransLaTeX or any value normalization at
+// all is the measure of how cleanly the two separated. What is left here is the renderer.
 import {
-  toUpperCase,
-  isNumeric,
-  wrapPlainTextInLatex,
-  normalizeNumberInput,
-  normalizeDateInput,
-  scoreCells,
-} from '../../scoring/index.js';
-
-// Helper functions for range selection
-const columnToNumber = (col) => {
-  let num = 0;
-  for (let i = 0; i < col.length; i++) {
-    num = num * 26 + (col.charCodeAt(i) - 'A'.charCodeAt(0) + 1);
-  }
-  return num;
-};
-
-const numberToColumn = (num) => {
-  let col = '';
-  while (num > 0) {
-    num--;
-    col = String.fromCharCode('A'.charCodeAt(0) + (num % 26)) + col;
-    num = Math.floor(num / 26);
-  }
-  return col;
-};
-
-const getColumnRange = (startCol, endCol) => {
-  const start = columnToNumber(startCol);
-  const end = columnToNumber(endCol);
-  const min = Math.min(start, end);
-  const max = Math.max(start, end);
-  const columns = [];
-  for (let i = min; i <= max; i++) {
-    columns.push(numberToColumn(i));
-  }
-  return columns;
-};
-
-const getRowRange = (startRow, endRow) => {
-  const start = parseInt(startRow);
-  const end = parseInt(endRow);
-  const min = Math.min(start, end);
-  const max = Math.max(start, end);
-  const rows = [];
-  for (let i = min; i <= max; i++) {
-    rows.push(String(i));
-  }
-  return rows;
-};
-
-const getCellRange = (startCell, endCell) => {
-  // Parse cell names (e.g., "B2" -> col: "B", row: "2")
-  const parseCell = (cell) => {
-    const match = cell.match(/^([A-Z]+)(\d+)$/);
-    if (!match) return null;
-    return { col: match[1], row: match[2] };
-  };
-
-  const start = parseCell(startCell);
-  const end = parseCell(endCell);
-  if (!start || !end) return [];
-
-  const columns = getColumnRange(start.col, end.col);
-  const rows = getRowRange(start.row, end.row);
-
-  const cells = [];
-  for (const row of rows) {
-    for (const col of columns) {
-      cells.push(col + row);
-    }
-  }
-  return cells;
-};
+  evalCell,
+  formatCellValue,
+  fixText,
+  getCellDependencies,
+  getResponses,
+  getChangedCells,
+  getCellColor,
+  mergeBorders,
+  getCellRange,
+  getColumnRange,
+  getRowRange,
+} from '../../sheet/index.js';
 
 const buildMenuPlugin = (formState) => {
   let currentHideMenu = formState.data.interaction?.hideMenu || false;
@@ -197,22 +138,6 @@ const applyDecoration = ({ doc, cells }) => {
     }));
   });
   return DecorationSet.create(doc, decorations);
-};
-
-const getCellColor = (cell) => {
-  const { row, col, name, background, 'background-color': bgColorKebab, backgroundColor: bgColorCamel, lastFocusedCell, score } = cell;
-  const backgroundColor = bgColorKebab || bgColorCamel; // Support both kebab-case and camelCase
-
-  // Don't apply colors to header cells (row 1 or column 1)
-  if (row <= 1 || col <= 1) {
-    return null;
-  }
-
-  return score !== undefined && name !== lastFocusedCell && (
-    score.isValid === true &&
-      "#efe" ||
-      "#fee"
-  ) || backgroundColor || background || null;
 };
 
 // Determine if a position is within a header cell
@@ -1040,316 +965,6 @@ const replaceCellContent = (editorView, name, newText, doMoveCursor = false) => 
   dispatch(tr);
 }
 
-const evalCell = ({ env, name }) => {
-  const cell = env.cells[name];
-  const text = cell?.text || "";
-  const format = cell?.format || "";
-  let result = {
-    formula: text,
-    val: text,
-    format: format,
-    type: 'text', // Default type is text
-  };
-
-  // Check for undefined function references and cycles before evaluation for formulas
-  if (text && text.length > 0 && text.indexOf("=") === 0) {
-    // Check for undefined name references (functions or variables)
-    const supportedFunctions = evalRules.types.fn;
-    const namePattern = /([A-Za-z][A-Za-z0-9_]*)/g;
-    const cellNamePattern = /^[A-Za-z]+[0-9]+$/; // Pattern for valid cell names like A1, B2, AA10
-    let match;
-    const undefinedNames = [];
-    while ((match = namePattern.exec(text)) !== null) {
-      const name = match[1];
-      const nameLower = name.toLowerCase();
-      // Skip if it's a valid cell reference (letters followed by numbers)
-      if (cellNamePattern.test(name)) {
-        continue;
-      }
-      // Skip if it's a supported function
-      if (supportedFunctions.includes(nameLower)) {
-        continue;
-      }
-      // It's an undefined name
-      undefinedNames.push(name);
-    }
-    if (undefinedNames.length > 0) {
-      const uniqueNames = [...new Set(undefinedNames)]; // Remove duplicates
-      return {
-        formula: text,
-        val: "#NAME!",
-        format: format,
-        type: 'error',
-        error: `Undefined name${uniqueNames.length > 1 ? 's' : ''}: ${uniqueNames.join(', ')}`
-      };
-    }
-
-    const cycleCheck = detectCycles({ env, startCell: name });
-    if (cycleCheck.hasCycle) {
-      return {
-        formula: text,
-        val: "#CYCLE!",
-        format: format,
-        type: 'error',
-        error: `Circular dependency: ${cycleCheck.cyclePath?.join(' → ')}`
-      };
-    }
-  }
-
-  // Apply normalization for non-formula input
-  if (text && !text.startsWith('=')) {
-    // Try to normalize as date first
-    const normalizedDate = normalizeDateInput(text);
-    if (normalizedDate) {
-      result.val = String(normalizedDate);
-      result.type = 'date';
-    } else {
-      // Try to normalize as number
-      const normalizedNumber = normalizeNumberInput(text);
-      if (normalizedNumber !== null) {
-        result.val = String(normalizedNumber);
-        result.type = 'number';
-      }
-    }
-  }
-  try {
-    // Only process formulas through TransLaTeX
-    if (text && text.length > 0 && text.indexOf("=") === 0) {
-      const options = {
-        // allowThousandsSeparator: true,
-        keepTextWhitespace: true,
-        env: env.cells,
-        ...evalRules,
-      };
-      const processedText = toUpperCase(text);
-      const translate = TransLaTeX.buildTranslator(options, spreadsheetExpanders);
-      translate(processedText, (err, val) => {
-        if (err && err.length) {
-          console.error(err);
-        }
-        // Store val as string but set appropriate type
-        // Check if it's a date format first
-        if (isDateFormat(format) && isNumeric(String(val))) {
-          result = {
-            ...result,
-            val: String(val),
-            type: 'date',
-          };
-        }
-        // Check if it's a number
-        else if (isNumeric(String(val))) {
-          result = {
-            ...result,
-            val: String(val),
-            type: 'number',
-          };
-        }
-        // Otherwise it's text
-        else {
-          result = {
-            ...result,
-            val: String(val),
-            type: 'text',
-          };
-        }
-      });
-    }
-  } catch (x: any) {
-    console.log("parse error: " + x.stack);
-  }
-  return result;
-}
-
-const fixText = text => {
-  // Convert to string if not already
-  const str = typeof text === 'string' ? text : String(text || '');
-  return str
-    .replace(new RegExp("\\{\\{", "g"), "[[")
-    .replace(new RegExp("\\}\\}", "g"), "]]");
-};
-
-const isDateFormat = (format) => {
-  const dateFormatPatterns = [
-    'MM/DD/YYYY', 'DD/MM/YYYY', 'YYYY-MM-DD',
-    'MM-DD-YYYY', 'DD-MM-YYYY', 'M/D/YY', 'D/M/YY',
-    'MMM DD, YYYY', 'DD MMM YYYY', 'date'
-  ];
-  return format && dateFormatPatterns.some(pattern =>
-    format.toLowerCase().includes(pattern.toLowerCase())
-  );
-};
-
-const formatCellValue = ({ env, name }) => {
-  const cell = env.cells[name] || {};
-  const val = cell.val;
-  const type = cell.type || 'text';
-  const format = cell.format || "";
-  let result = val;
-
-  // Handle date serial numbers based on type and format
-  const isDateFormatted = isDateFormat(format);
-  // Convert string val to number if it's a date type
-  if ((type === 'date' || isDateFormatted) && val) {
-    const numVal = typeof val === 'string' ? parseFloat(val) : val;
-    if (!isNaN(numVal)) {
-      const excelEpoch = new Date(1904, 0, 1);
-      const msPerDay = 24 * 60 * 60 * 1000;
-      const date = new Date(excelEpoch.getTime() + (numVal - 1) * msPerDay);
-    // Apply specific date format
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const month = date.getMonth() + 1;
-    const day = date.getDate();
-    const year = date.getFullYear();
-    const yearShort = year.toString().slice(-2);
-    if (format.includes('DD/MM/YYYY')) {
-      result = `${day.toString().padStart(2, '0')}/${month.toString().padStart(2, '0')}/${year}`;
-    } else if (format.includes('DD-MM-YYYY')) {
-      result = `${day.toString().padStart(2, '0')}-${month.toString().padStart(2, '0')}-${year}`;
-    } else if (format.includes('YYYY-MM-DD')) {
-      result = `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-    } else if (format.includes('MM-DD-YYYY')) {
-      result = `${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}-${year}`;
-    } else if (format.includes('M/D/YY')) {
-      result = `${month}/${day}/${yearShort}`;
-    } else if (format.includes('D/M/YY')) {
-      result = `${day}/${month}/${yearShort}`;
-    } else if (format.includes('MMM DD, YYYY')) {
-      result = `${monthNames[date.getMonth()]} ${day.toString().padStart(2, '0')}, ${year}`;
-    } else if (format.includes('DD MMM YYYY')) {
-      result = `${day.toString().padStart(2, '0')} ${monthNames[date.getMonth()]} ${year}`;
-    } else {
-      // Default to MM/DD/YYYY
-      result = `${month.toString().padStart(2, '0')}/${day.toString().padStart(2, '0')}/${year}`;
-    }
-    }
-  }
-  try {
-    // Convert numbers to strings for TransLaTeX formatting
-    if (typeof result === 'number' && format && !isDateFormatted) {
-      result = result.toString();
-    }
-    // FIXME date formatting in translatex assumes input is a formatted string,
-    // not a date serial number. For now, only process string values with format
-    // rules (skip if we already formatted a date)
-    if (format && result && typeof result === 'string' && result.length > 0 && !isDateFormatted) {
-      const options = {
-        allowInterval: true,
-        keepTextWhitespace: true,
-        RHS: false,
-        env: {format},
-        ...formatRules,
-      };
-      const processedVal = wrapPlainTextInLatex(result);
-      const translate = TransLaTeX.buildTranslator(options, spreadsheetExpanders);
-      translate(processedVal, (err, val) => {
-        if (err && err.length) {
-          console.error(err);
-        }
-        result = val;
-      });
-    }
-  } catch (x: any) {
-    console.log("parse error: " + x.stack);
-  }
-  return result;
-}
-
-
-const getSingleCellDependencies = ({ env, name }) => {
-  const text = env.cells[name]?.text || "";
-  let result = text;
-  try {
-    const options = {
-      // allowThousandsSeparator: true,
-      env: env.cells,
-      ...cellNameRules,
-    };
-    if (text && text.length > 0 && text.indexOf("=") === 0) {
-      // FIXME this condition is brittle.
-      const translate = TransLaTeX.buildTranslator(options, spreadsheetExpanders);
-      translate(text, (err, val) => {
-        if (err && err.length) {
-          console.error(err);
-        }
-        result = val.split(",").map(name => name.toUpperCase());
-      });
-    } else {
-      result = [];
-    }
-  } catch (x: any) {
-    console.log("parse error: " + x.stack);
-  }
-  return result;
-};
-
-// Cycle detection using DFS with three-color approach
-interface CycleDetectionResult {
-  hasCycle: boolean;
-  cyclePath?: string[];
-  dependencies: string[];
-}
-
-const detectCycles = ({ env, startCell }: { env: any; startCell: string }): CycleDetectionResult => {
-  const GRAY = 1, BLACK = 2;
-  const colors = new Map<string, number>();
-  const dependencies = new Set<string>();
-  let cyclePath: string[] = [];
-  let hasCycle = false;
-
-  const dfs = (cell: string, path: string[]): boolean => {
-    if (colors.get(cell) === GRAY) {
-      // Found a back edge - cycle detected
-      const cycleStart = path.indexOf(cell);
-      cyclePath = path.slice(cycleStart).concat([cell]);
-      return true;
-    }
-
-    if (colors.get(cell) === BLACK) {
-      // Already processed, no cycle in this path
-      return false;
-    }
-
-    // Mark as currently being processed
-    colors.set(cell, GRAY);
-    // Get direct dependencies of this cell
-    const cellDeps = getSingleCellDependencies({ env, name: cell });
-    for (const dep of cellDeps) {
-      dependencies.add(dep);
-      if (dfs(dep, [...path, cell])) {
-        return true; // Cycle found
-      }
-    }
-
-    // Mark as completely processed
-    colors.set(cell, BLACK);
-    return false;
-  };
-
-  hasCycle = dfs(startCell, []);
-
-  return {
-    hasCycle,
-    cyclePath: hasCycle ? cyclePath : undefined,
-    dependencies: Array.from(dependencies)
-  };
-};
-
-const getCellDependencies = ({ env, names }) => {
-  // Get the cells that `names` depend on with cycle detection
-  const allDeps = new Set<string>();
-  for (const name of names) {
-    const result = detectCycles({ env, startCell: name });
-    if (result.hasCycle) {
-      console.error(`Circular dependency detected in cell ${name}: ${result.cyclePath?.join(' → ')}`);
-      // Continue processing other cells but don't add dependencies for cyclic cells
-      continue;
-    }
-    result.dependencies.forEach(dep => allDeps.add(dep));
-  }
-  return Array.from(allDeps);
-};
-
 const makeTableHeadersReadOnlyPlugin = (formState) => new Plugin({
   view(editorView) {
     // Add a capture phase event listener to catch shift-clicks and cmd/ctrl-clicks on headers and cells
@@ -2058,31 +1673,6 @@ const makeProtectedCellsPlugin = (tooltipHandler) => new Plugin({
 });
 
 
-const getResponses = cells => (
-  Object.keys(cells).reduce(
-    (acc, name) => {
-      const {text, val, formula, assess} = cells[name];
-      return assess && {
-        ...acc,
-        [name]: {text, val, formula},
-      } || acc
-    }, {}
-  )
-);
-
-const getChangedCells = (cells, changedNames) => (
-  changedNames.reduce((acc, name) => {
-    const cell = cells[name];
-    if (!cell) return acc;
-    const { text } = cell;
-    const formattedValue = formatCellValue({ env: { cells }, name });
-    return {
-      ...acc,
-      [name]: { text, formattedValue },
-    };
-  }, {})
-);
-
 const buildCellPlugin = formState => {
   let initialUpdateSent = false;
   const self = new Plugin({
@@ -2746,38 +2336,6 @@ const applyRules = ({ cols, rows, rowsAttrs }) => {
     // Don't set a default background color - let cells use their natural background
   });
   return rowAttrs;
-};
-
-// Helper function to merge border specifications from multiple sources
-const mergeBorders = (border1, border2) => {
-  if (!border1) return border2;
-  if (!border2) return border1;
-
-  // If either is a CSS border string (e.g., "1px solid black"), use the most specific one
-  if (border1.includes('px') || border2.includes('px')) {
-    // Cell borders take precedence over column/row borders for CSS styles
-    return border2;
-  }
-
-  // Parse side specifications
-  const parseSides = (border) => {
-    if (border === 'all') return ['top', 'bottom', 'left', 'right'];
-    return border.split(',').map(s => s.trim().toLowerCase());
-  };
-
-  const sides1 = parseSides(border1);
-  const sides2 = parseSides(border2);
-
-  // Merge unique sides
-  const mergedSides = [...new Set([...sides1, ...sides2])];
-
-  // If all sides are present, return 'all'
-  if (mergedSides.includes('top') && mergedSides.includes('bottom') &&
-      mergedSides.includes('left') && mergedSides.includes('right')) {
-    return 'all';
-  }
-
-  return mergedSides.join(',');
 };
 
 const getCell = (row, col, cells, columns, rows) => {
