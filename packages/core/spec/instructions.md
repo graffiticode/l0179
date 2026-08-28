@@ -79,11 +79,13 @@ cells in it.
 Presentation: `width`, `align`, `background-color`, `font-weight`, `font-size`, `font-family`,
 `font-style`, `color`, `text-decoration`, `border`, `vertical-align`, `format`, `protected`.
 
-Values are CSS, written as strings, and `width` is the exception at a bare number:
+Values are CSS, written as strings, with two exceptions taking bare literals: `width` a number,
+and `protected` a `true` or `false`. Quoting either is a compile error:
 
 ```
 column A [width 200]
 cell A1 [font-size "14px" font-weight "bold" color "#1a2744" background-color "#eee"]
+cell A2 [text "2+3=" protected true]
 ```
 
 **A size needs its unit.** `font-size "14px"` renders; `font-size "16"` and `font-size 16` are
