@@ -166,7 +166,12 @@ export const attributeFields: Record<string, AttributeMeta> = {
   BORDER: { field: "border", coerce: asTag, expects: "string" },
   VERTICAL_ALIGN: { field: "vertical-align", coerce: asTag, expects: "string" },
   FORMAT: { field: "format", coerce: asTag, expects: "string" },
-  PROTECTED: { field: "protected" },
+  // spec/schema.json declares protected a boolean on cell, column, row and region.
+  // Leaving it unchecked here let `protected "true"` compile clean, and the string
+  // only blew up one layer up, where a host dialect (L0176) validates an embedded
+  // sheet against that schema: "must be boolean". Because the sheet itself
+  // compiled, the repair loop never saw an error to repair.
+  PROTECTED: { field: "protected", expects: "boolean" },
 
   // Assessment
   ASSESS: { field: "assess", shape: "object" },
