@@ -91,13 +91,28 @@ Written inside a `[...]` list as a word applied to a value. Order does not matte
 | `font-weight`, `font-size`, `font-family`, `font-style` | cell, column, row | Type. |
 | `text-decoration`, `vertical-align`, `border` | cell, column, row | Presentation. |
 | `format` | cell, column, row | A number format, e.g. `"#,##0.00"`. |
-| `protected` | cell, column, row | When true the learner cannot edit the cell. |
+| `protected` | cell, column, row | When true the learner cannot edit the cell. A bare `true` or `false`. |
 | `name` | sheet | The sheet's label in the tab strip and the sheet menu. Defaults to its id. |
 | `hide-formulabar` | sheet | Hides the `fx` input above the grid. |
 | `title`, `instructions` | **program** | Text shown above the grid. Written after the `sheets` list, not inside a sheet. |
 | `show-sheet-tabs`, `hide-sheet-menu` | **program** | See [Several sheets](#sec-Several-sheets). Written after the `sheets` list. |
 
 An attribute a container does not accept is a compile error naming what that container takes.
+
+### protected
+
+Written as a bare `true` or `false`, never quoted — `protected "true"` is a compile error.
+Use it for display-only cells, such as the labels a learner reads but must not change.
+
+```
+cell A1 [text "2+3=" protected true]
+```
+
+Set on a column or row, it protects every cell in it.
+
+```
+column A [protected true]
+```
 
 ### assess
 
