@@ -15,11 +15,11 @@
  *
  * `#NAME!` and `#CYCLE!` are produced here, before evaluation, and carry a human-readable `error`.
  */
-import { TransLaTeX, spreadsheetExpanders } from "@graffiticode/translatex";
+import { TransLaTeX } from "@graffiticode/translatex";
 
 import { evalRules, formatRules } from "../scoring/translatex-rules.js";
+import { expanders, prepareFormula } from "../scoring/translatex-extensions.js";
 import {
-  toUpperCase,
   isNumeric,
   wrapPlainTextInLatex,
   normalizeNumberInput,
@@ -147,8 +147,8 @@ export const evalCell = ({ env, name, graph, cache }: any): CellValue => {
         env: narrowEnv,
         ...evalRules,
       };
-      const processedText = toUpperCase(text);
-      const translate = TransLaTeX.buildTranslator(options, spreadsheetExpanders);
+      const processedText = prepareFormula(text);
+      const translate = TransLaTeX.buildTranslator(options, expanders);
       translate(processedText, (err, val) => {
         if (err && err.length) {
           console.error(err);
@@ -275,7 +275,7 @@ export const formatCellValue = ({ env, name, cache }: any) => {
         ...formatRules,
       };
       const processedVal = wrapPlainTextInLatex(result);
-      const translate = TransLaTeX.buildTranslator(options, spreadsheetExpanders);
+      const translate = TransLaTeX.buildTranslator(options, expanders);
       translate(processedVal, (err, val) => {
         if (err && err.length) {
           console.error(err);

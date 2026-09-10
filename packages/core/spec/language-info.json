@@ -40,7 +40,7 @@
     {
       "prompt": "Create a worksheet listing water samples with pH values, and a Status column using an IF formula that shows Pass when the pH is at least 6.5 and Fail otherwise.",
       "produces": "spreadsheet",
-      "notes": "IF, SUM, AVERAGE, ROUND and arithmetic are the available formula functions; naming the comparison spells out the condition."
+      "notes": "IF, SUM, AVERAGE, ROUND, POWER and arithmetic are the available formula functions; naming the comparison spells out the condition."
     }
   ]
 }
