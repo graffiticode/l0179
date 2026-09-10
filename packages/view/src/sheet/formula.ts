@@ -25,7 +25,8 @@ import {
   normalizeNumberInput,
   normalizeDateInput,
 } from "../scoring/index.js";
-import { getCellRange } from "./address.js";
+import { buildGraph, findCycle } from "./graph.js";
+import type { DependencyGraph } from "./graph.js";
 
 /**
  * What a cell evaluates to. `error` is present only on the error path, where `val` carries the
@@ -255,62 +256,6 @@ export const formatCellValue = ({ env, name }) => {
 }
 
 
-/**
- * A cell reference, optionally the start of a range. A function name can never match: it has no
- * trailing digits.
- */
-const CELL_REF = /\b([A-Z]+[0-9]+)(?::([A-Z]+[0-9]+))?\b/g;
-
-/**
- * The cells a formula reads, in the order it reads them, ranges expanded and duplicates dropped.
- * A non-formula depends on nothing.
- *
- * WHY THIS IS PARSED DIRECTLY rather than rendered through TransLaTeX, which is what it used to do:
- * the `cellNameRules` rule set is meant to re-emit a formula as nothing but its cell names, and for
- * bare arithmetic it does. For a FUNCTION CALL it has a `fn(cellRange)` case inside its `"=?"`
- * dispatch but no top-level rule for function application, so the expression fell through to the
- * generic `"??": "%1%2"` concatenation and the function's name was glued onto the first cell name:
- *
- *     =SUM(A1:A3)    ->  ["SUMA1", "A2", "A3"]     A1 lost
- *     =ROUND(A1,2)   ->  ["ROUNDA1"]               nothing tracked
- *     =IF(A1,B1,C1)  ->  ["IFA1"]                  B1 and C1 lost
- *
- * That was not cosmetic. This list is the reverse edge that drives recalculation, so a cell reading
- * A1 through a function call was never woken when A1 changed: a learner edited an input and the
- * total below it silently kept a stale value, which in an assessed sheet is the value that gets
- * graded. Confirmed in the browser before the fix — `=ROUND(B1,2)` never updated at all, and
- * `=SUM(B1:B3)` updated only when some OTHER cell in the range was touched.
- *
- * Parsing the references directly is both correct and simpler than teaching the rule set about
- * every call shape. The old code also returned the raw formula STRING when the translator threw,
- * which callers then iterated character by character; this always returns an array.
- */
-export const getSingleCellDependencies = ({ env, name }): string[] => {
-  const text = env.cells[name]?.text || "";
-  if (!text || text.indexOf("=") !== 0) return [];
-
-  // Upper-case outside quoted strings, so `=sum(a1:a3)` resolves like `=SUM(A1:A3)`; then blank the
-  // quoted segments, because a cell name inside a string literal is text, not a reference.
-  const formula = toUpperCase(text)
-    .replace(/"[^"]*"/g, '""')
-    .replace(/'[^']*'/g, "''");
-
-  const deps: string[] = [];
-  const seen = new Set<string>();
-  CELL_REF.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = CELL_REF.exec(formula)) !== null) {
-    // `A1:A3` contributes every cell between its corners; a lone `A1` contributes itself.
-    for (const cell of (match[2] ? getCellRange(match[1], match[2]) : [match[1]])) {
-      if (!seen.has(cell)) {
-        seen.add(cell);
-        deps.push(cell);
-      }
-    }
-  }
-  return deps;
-};
-
 // Cycle detection using DFS with three-color approach
 export interface CycleDetectionResult {
   hasCycle: boolean;
@@ -318,56 +263,30 @@ export interface CycleDetectionResult {
   dependencies: string[];
 }
 
-export const detectCycles = ({ env, startCell }: { env: any; startCell: string }): CycleDetectionResult => {
-  const GRAY = 1, BLACK = 2;
-  const colors = new Map<string, number>();
-  const dependencies = new Set<string>();
-  let cyclePath: string[] = [];
-  let hasCycle = false;
+/**
+ * Cycle detection from one cell.
+ *
+ * The traversal moved to `graph.ts`; this is the compatibility surface, unchanged in signature and
+ * in output. What changed underneath is that the edges are parsed ONCE into a graph instead of the
+ * DFS re-parsing every formula it walks — and a caller that already holds a graph can pass it and
+ * skip the build entirely, which is what recalculation does.
+ */
+export const detectCycles = (
+  { env, startCell, graph }: { env: any; startCell: string; graph?: DependencyGraph },
+): CycleDetectionResult => findCycle(graph || buildGraph(env.cells), startCell);
 
-  const dfs = (cell: string, path: string[]): boolean => {
-    if (colors.get(cell) === GRAY) {
-      // Found a back edge - cycle detected
-      const cycleStart = path.indexOf(cell);
-      cyclePath = path.slice(cycleStart).concat([cell]);
-      return true;
-    }
-
-    if (colors.get(cell) === BLACK) {
-      // Already processed, no cycle in this path
-      return false;
-    }
-
-    // Mark as currently being processed
-    colors.set(cell, GRAY);
-    // Get direct dependencies of this cell
-    const cellDeps = getSingleCellDependencies({ env, name: cell });
-    for (const dep of cellDeps) {
-      dependencies.add(dep);
-      if (dfs(dep, [...path, cell])) {
-        return true; // Cycle found
-      }
-    }
-
-    // Mark as completely processed
-    colors.set(cell, BLACK);
-    return false;
-  };
-
-  hasCycle = dfs(startCell, []);
-
-  return {
-    hasCycle,
-    cyclePath: hasCycle ? cyclePath : undefined,
-    dependencies: Array.from(dependencies)
-  };
-};
-
-export const getCellDependencies = ({ env, names }) => {
-  // Get the cells that `names` depend on with cycle detection
+/**
+ * The cells `names` depend on, transitively, skipping any that sit in a cycle.
+ *
+ * One graph is built for the whole call rather than one DFS re-parsing per name, so N starts now
+ * share the parse. The colour map stays PER START CELL inside `findCycle`: sharing it would mark
+ * cells BLACK from an earlier walk and drop dependencies a later start is expected to report.
+ */
+export const getCellDependencies = ({ env, names, graph }: any) => {
+  const g = graph || buildGraph(env.cells);
   const allDeps = new Set<string>();
   for (const name of names) {
-    const result = detectCycles({ env, startCell: name });
+    const result = findCycle(g, name);
     if (result.hasCycle) {
       console.error(`Circular dependency detected in cell ${name}: ${result.cyclePath?.join(' → ')}`);
       // Continue processing other cells but don't add dependencies for cyclic cells

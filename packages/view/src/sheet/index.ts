@@ -15,11 +15,24 @@ export {
   formatCellValue,
   fixText,
   isDateFormat,
-  getSingleCellDependencies,
   getCellDependencies,
   detectCycles,
 } from "./formula.js";
 export type { CycleDetectionResult, CellValue } from "./formula.js";
+
+// The dependency graph. `getSingleCellDependencies` is re-exported from here rather than from
+// formula.ts because it moved to sit with the structure it feeds; the name and behaviour are
+// unchanged, which is what keeps formula.test.ts importing it from this barrel untouched.
+export {
+  getSingleCellDependencies,
+  buildGraph,
+  setFormula,
+  removeCell,
+  findCycle,
+  dependentsOf,
+  topoOrder,
+} from "./graph.js";
+export type { DependencyGraph, CycleResult } from "./graph.js";
 
 export { getResponses, getChangedCells } from "./payload.js";
 
