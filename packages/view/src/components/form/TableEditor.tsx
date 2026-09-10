@@ -1635,7 +1635,7 @@ const buildCellPlugin = formState => {
               formState.apply({
                 type: "update",
                 args: {
-                  cells: getChangedCells(cells, allCellNames),
+                  cells: getChangedCells(cells, allCellNames, pluginState.cache),
                 },
               });
             }
@@ -1709,7 +1709,7 @@ const buildCellPlugin = formState => {
               ...cells[name],
               ...evalCell({ env: {cells}, name, cache: pluginState.cache }),
             };
-            const formattedVal = fixText(formatCellValue({env: {cells}, name}));
+            const formattedVal = fixText(formatCellValue({env: {cells}, name, cache: pluginState.cache}));
             const { node } = getCellNodeByName({state: view.state, name});
             if (name !== pluginState.focusedCell && formattedVal !== node.textContent) {
               pending.push({ name, text: formattedVal });
@@ -1889,7 +1889,7 @@ const buildCellPlugin = formState => {
             formState.apply({
               type: "update",
               args: {
-                cells: getChangedCells(value.cells, changedCellNames),
+                cells: getChangedCells(value.cells, changedCellNames, value.cache),
               },
             });
           }

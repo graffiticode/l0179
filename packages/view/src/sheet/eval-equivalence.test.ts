@@ -8,7 +8,7 @@
  * subtly wrong in a way no existing test would notice.
  */
 import { test, expect, describe } from "vitest";
-import { evalCell, buildGraph } from "./index.js";
+import { evalCell, formatCellValue, buildGraph } from "./index.js";
 import { createSheetCache } from "./cache.js";
 import { TransLaTeX, spreadsheetExpanders } from "@graffiticode/translatex";
 import { evalRules } from "../scoring/translatex-rules.js";
@@ -155,6 +155,63 @@ describe("the cache returns what evaluation would have returned", () => {
     const warm = ["X", "Y", "Z"].map((n) => evalCell({ env: { cells }, name: n, cache }).val);
     expect(warm).toEqual(cold);
     expect(cache.values.size).toBeLessThanOrEqual(2);
+  });
+});
+
+describe("the format memo returns what formatting would have returned", () => {
+  // formatCellValue is a pure function of the cell's val, type and format. Real sheets repeat
+  // formats heavily — a 336-cell item measured 266 formatted cells and TWO distinct format
+  // strings — so this is nearly all hits, and it must be exactly transparent.
+  const cases: [string, any][] = [
+    ["currency", { val: "1234.5", type: "number", format: "$#,##0" }],
+    ["percent", { val: "0.256", type: "number", format: "0.0%" }],
+    ["thousands", { val: "1234567", type: "number", format: "#,##0.00" }],
+    ["no format", { val: "42", type: "number", format: "" }],
+    ["text", { val: "hello", type: "text", format: "" }],
+    ["date serial", { val: "40000", type: "date", format: "MM/DD/YYYY" }],
+    ["date, other pattern", { val: "40000", type: "date", format: "DD MMM YYYY" }],
+    ["empty value", { val: "", type: "text", format: "$#,##0" }],
+    ["error value", { val: "#CYCLE!", type: "error", format: "$#,##0" }],
+  ];
+
+  test.each(cases)("%s", (_label, cell) => {
+    const cells: any = { X: cell };
+    const cache = createSheetCache();
+    const cold = formatCellValue({ env: { cells }, name: "X" });
+    const warm1 = formatCellValue({ env: { cells }, name: "X", cache });
+    const warm2 = formatCellValue({ env: { cells }, name: "X", cache });
+    expect(warm1).toEqual(cold);
+    expect(warm2).toEqual(cold);
+  });
+
+  test("the same format with a different value is a different key", () => {
+    const cache = createSheetCache();
+    const cells: any = { X: { val: "1000", type: "number", format: "$#,##0" } };
+    const a = formatCellValue({ env: { cells }, name: "X", cache });
+    cells.X = { val: "2000", type: "number", format: "$#,##0" };
+    const b = formatCellValue({ env: { cells }, name: "X", cache });
+    expect(b).not.toEqual(a);
+    expect(b).toEqual(formatCellValue({ env: { cells }, name: "X" }));
+  });
+
+  test("the same value with a different format is a different key", () => {
+    const cache = createSheetCache();
+    const cells: any = { X: { val: "0.5", type: "number", format: "0.0%" } };
+    const pct = formatCellValue({ env: { cells }, name: "X", cache });
+    cells.X = { val: "0.5", type: "number", format: "$#,##0.00" };
+    const money = formatCellValue({ env: { cells }, name: "X", cache });
+    expect(money).not.toEqual(pct);
+  });
+
+  test("a numeric val is not confused with the same digits as a string", () => {
+    // formatCellValue branches on `typeof result === "number"`, so the key carries the JS type.
+    const cache = createSheetCache();
+    const asNum: any = { X: { val: 1234, type: "number", format: "$#,##0" } };
+    const asStr: any = { X: { val: "1234", type: "number", format: "$#,##0" } };
+    const n = formatCellValue({ env: { cells: asNum }, name: "X", cache });
+    const t = formatCellValue({ env: { cells: asStr }, name: "X", cache });
+    expect(n).toEqual(formatCellValue({ env: { cells: asNum }, name: "X" }));
+    expect(t).toEqual(formatCellValue({ env: { cells: asStr }, name: "X" }));
   });
 });
 

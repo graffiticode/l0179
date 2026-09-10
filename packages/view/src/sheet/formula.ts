@@ -26,7 +26,7 @@ import {
   normalizeDateInput,
 } from "../scoring/index.js";
 import { findCycle, findCycleWith, lazyPrecedents, getSingleCellDependencies } from "./graph.js";
-import { evalKey, cacheGet, cacheSet } from "./cache.js";
+import { evalKey, cacheGet, cacheSet, formatKey, formatCacheGet, formatCacheSet } from "./cache.js";
 import type { DependencyGraph } from "./graph.js";
 
 /**
@@ -206,8 +206,15 @@ export const isDateFormat = (format) => {
   );
 };
 
-export const formatCellValue = ({ env, name }) => {
+export const formatCellValue = ({ env, name, cache }: any) => {
   const cell = env.cells[name] || {};
+  // A pure function of the cell's `val`, `type` and `format` — see formatKey. Formats repeat
+  // heavily across a real sheet, so this is nearly all hits once warm.
+  const key = cache && formatKey(cell);
+  if (cache) {
+    const hit = formatCacheGet(cache, key);
+    if (hit !== undefined) return hit;
+  }
   const val = cell.val;
   const type = cell.type || 'text';
   const format = cell.format || "";
@@ -279,7 +286,7 @@ export const formatCellValue = ({ env, name }) => {
   } catch (x: any) {
     console.log("parse error: " + x.stack);
   }
-  return result;
+  return cache ? formatCacheSet(cache, key, result) : result;
 }
 
 

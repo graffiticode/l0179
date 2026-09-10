@@ -34,7 +34,7 @@ export const getResponses = (cells: any): any => {
 };
 
 /** The named cells, projected for the `update` action. Unknown names are skipped, not nulled. */
-export const getChangedCells = (cells: any, changedNames: string[]): any => {
+export const getChangedCells = (cells: any, changedNames: string[], cache?: any): any => {
   const changed: any = {};
   // Hoisted: the env is the same for every name, and rebuilding it per cell allocated one wrapper
   // object per call for nothing.
@@ -42,7 +42,7 @@ export const getChangedCells = (cells: any, changedNames: string[]): any => {
   for (const name of changedNames) {
     const cell = cells[name];
     if (!cell) continue;
-    changed[name] = { text: cell.text, formattedValue: formatCellValue({ env, name }) };
+    changed[name] = { text: cell.text, formattedValue: formatCellValue({ env, name, cache }) };
   }
   return changed;
 };

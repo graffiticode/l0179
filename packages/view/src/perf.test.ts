@@ -243,11 +243,62 @@ describe("dependency extraction never reaches the parser", () => {
 });
 
 describe("formatting", () => {
+  /** `rows` x 10 formatted numeric cells, the shape a real authored sheet has. */
+  const formatted = (rows: number) => {
+    const cells: any = {};
+    const fmts = ["$#,##0", "0.0%"];
+    let i = 0;
+    for (const name of Object.keys(fx.literal(rows))) {
+      cells[name] = { val: String(1000 + i), type: "number", format: fmts[i % 2] };
+      i++;
+    }
+    return cells;
+  };
+
   test("formatting an unformatted cell does not reach the parser", () => {
     const cells = fx.literal(10);
     const names = Object.keys(cells);
     expect(count(() => {
       for (const name of names) formatCellValue({ env: { cells }, name });
+    })).toBe(0);
+  });
+
+  test("a FORMATTED cell does reach the parser — once per distinct value", () => {
+    // The cost missed by the fixtures above, and found on a real 336-cell item: 266 of its cells
+    // carried a format, and formatting them was 111 ms of parsing. Uncached it is one parse per
+    // cell; the memo keys on (val, type, format), and these 200 cells all differ in value, so
+    // this is the honest worst case rather than a flattering one.
+    const cells = formatted(20);
+    const names = Object.keys(cells);
+    expect(names.length).toBe(200);
+    expect(count(() => {
+      for (const name of names) formatCellValue({ env: { cells }, name });
+    })).toBe(200);
+  });
+
+  test("repeated values collapse to one parse each", () => {
+    // The realistic case: a column of the same formatted figure, or a second pass over a sheet
+    // that has not changed. Two distinct (val, format) pairs here, so two parses however many
+    // cells there are.
+    const cells: any = {};
+    for (let i = 1; i <= 100; i++) {
+      cells["A" + i] = { val: "1000", type: "number", format: "$#,##0" };
+      cells["B" + i] = { val: "0.5", type: "number", format: "0.0%" };
+    }
+    const names = Object.keys(cells);
+    const cache = createSheetCache();
+    expect(count(() => {
+      for (const name of names) formatCellValue({ env: { cells }, name, cache });
+    })).toBe(2);
+  });
+
+  test("a second formatting pass over an unchanged sheet is free", () => {
+    const cells = formatted(20);
+    const names = Object.keys(cells);
+    const cache = createSheetCache();
+    count(() => { for (const name of names) formatCellValue({ env: { cells }, name, cache }); });
+    expect(count(() => {
+      for (const name of names) formatCellValue({ env: { cells }, name, cache });
     })).toBe(0);
   });
 });
