@@ -160,13 +160,35 @@ export const removeCell = (graph: DependencyGraph, name: string): void => {
 };
 
 /**
- * The same three-colour DFS as `detectCycles`, reading stored edges instead of re-parsing.
+ * An edge source that parses a cell's references on FIRST ACCESS and remembers them.
+ *
+ * This exists so a cycle check does not have to build the whole graph. A walk from one cell
+ * touches only its transitive precedents, and for a caller checking one cell — which is what
+ * `evalCell` does, once per evaluation — building every edge in the sheet would be O(cells) of
+ * regex work per evaluation, i.e. O(cells^2) over a mount. Sharing one of these across several
+ * starts is safe and is the point: edges are shared, traversal state is not.
+ */
+export const lazyPrecedents = (cells: any): ((name: string) => string[]) => {
+  const memo = new Map<string, string[]>();
+  const env = { cells };
+  return (name: string): string[] => {
+    let deps = memo.get(name);
+    if (deps === undefined) memo.set(name, (deps = getSingleCellDependencies({ env, name })));
+    return deps;
+  };
+};
+
+/**
+ * The three-colour DFS, over whatever edge source it is handed.
  *
  * The path is one mutable array pushed and popped rather than `[...path, cell]` per edge, so a
  * deep chain no longer allocates a fresh array for every step; it is sliced only when a cycle is
  * actually found, which is the uncommon case.
  */
-export const findCycle = (graph: DependencyGraph, startCell: string): CycleResult => {
+export const findCycleWith = (
+  precedentsOf: (name: string) => string[],
+  startCell: string,
+): CycleResult => {
   const GRAY = 1, BLACK = 2;
   const colors = new Map<string, number>();
   const dependencies = new Set<string>();
@@ -183,7 +205,7 @@ export const findCycle = (graph: DependencyGraph, startCell: string): CycleResul
 
     colors.set(cell, GRAY);
     path.push(cell);
-    for (const dep of graph.precedents.get(cell) || []) {
+    for (const dep of precedentsOf(cell)) {
       dependencies.add(dep);
       if (dfs(dep)) return true;
     }
@@ -199,6 +221,10 @@ export const findCycle = (graph: DependencyGraph, startCell: string): CycleResul
     dependencies: Array.from(dependencies),
   };
 };
+
+/** Cycle detection over a graph that is already built. */
+export const findCycle = (graph: DependencyGraph, startCell: string): CycleResult =>
+  findCycleWith((name) => graph.precedents.get(name) || [], startCell);
 
 /**
  * Every cell that transitively reads any of `names` — a BFS over the reverse index, each cell

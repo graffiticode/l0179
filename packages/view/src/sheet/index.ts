@@ -34,6 +34,11 @@ export {
 } from "./graph.js";
 export type { DependencyGraph, CycleResult } from "./graph.js";
 
+// The evaluation memo. There is no shared instance on purpose: the caller owns its lifetime, and
+// a module-level one would leak across sheets and across scorer invocations. See cache.ts.
+export { createSheetCache } from "./cache.js";
+export type { SheetCache } from "./cache.js";
+
 export { getResponses, getChangedCells } from "./payload.js";
 
 export {

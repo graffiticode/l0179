@@ -25,7 +25,8 @@ import {
   normalizeNumberInput,
   normalizeDateInput,
 } from "../scoring/index.js";
-import { buildGraph, findCycle } from "./graph.js";
+import { findCycle, findCycleWith, lazyPrecedents, getSingleCellDependencies } from "./graph.js";
+import { evalKey, cacheGet, cacheSet } from "./cache.js";
 import type { DependencyGraph } from "./graph.js";
 
 /**
@@ -40,7 +41,7 @@ export interface CellValue {
   error?: string;
 }
 
-export const evalCell = ({ env, name }): CellValue => {
+export const evalCell = ({ env, name, graph, cache }: any): CellValue => {
   const cell = env.cells[name];
   const text = cell?.text || "";
   const format = cell?.format || "";
@@ -84,7 +85,7 @@ export const evalCell = ({ env, name }): CellValue => {
       };
     }
 
-    const cycleCheck = detectCycles({ env, startCell: name });
+    const cycleCheck = detectCycles({ env, startCell: name, graph });
     if (cycleCheck.hasCycle) {
       return {
         formula: text,
@@ -115,10 +116,35 @@ export const evalCell = ({ env, name }): CellValue => {
   try {
     // Only process formulas through TransLaTeX
     if (text && text.length > 0 && text.indexOf("=") === 0) {
+      // Only the cells this formula actually references are handed to the parser.
+      //
+      // This is not merely an allocation saving. `Object.keys(env)` becomes parselatex's
+      // identifier table, and it is scanned per character of every identifier token, so the parse
+      // gets slower the bigger the env is: the same `=SUM(A1:A3)+B1` measures 6.1 ms against four
+      // cells and 32.3 ms against 1206.
+      //
+      // The `!== undefined` filter is what makes it SAFE. Membership changes the parse, not just
+      // the lookup — `=A1+Q7` is "11" when Q7 is in the env and "10" when it is absent — so a
+      // referenced name is included exactly when it exists in the source map, which reproduces the
+      // identifier set the whole map would have produced for this formula. Dropping names the
+      // formula does not mention cannot change anything, which is the half that buys the speed.
+      const deps = graph
+        ? (graph.precedents.get(name) || [])
+        : getSingleCellDependencies({ env, name });
+      const narrowEnv: any = {};
+      for (const dep of deps) {
+        const cell = env.cells[dep];
+        if (cell !== undefined) narrowEnv[dep] = cell;
+      }
+
+      const key = cache && evalKey(env.cells, name, deps);
+      const hit = cache && cacheGet(cache, key);
+      if (hit) return hit;
+
       const options = {
         // allowThousandsSeparator: true,
         keepTextWhitespace: true,
-        env: env.cells,
+        env: narrowEnv,
         ...evalRules,
       };
       const processedText = toUpperCase(text);
@@ -153,6 +179,7 @@ export const evalCell = ({ env, name }): CellValue => {
           };
         }
       });
+      if (cache) return cacheSet(cache, key, result);
     }
   } catch (x: any) {
     console.log("parse error: " + x.stack);
@@ -273,7 +300,11 @@ export interface CycleDetectionResult {
  */
 export const detectCycles = (
   { env, startCell, graph }: { env: any; startCell: string; graph?: DependencyGraph },
-): CycleDetectionResult => findCycle(graph || buildGraph(env.cells), startCell);
+): CycleDetectionResult => (
+  graph
+    ? findCycle(graph, startCell)
+    : findCycleWith(lazyPrecedents(env.cells), startCell)
+);
 
 /**
  * The cells `names` depend on, transitively, skipping any that sit in a cycle.
@@ -283,10 +314,15 @@ export const detectCycles = (
  * cells BLACK from an earlier walk and drop dependencies a later start is expected to report.
  */
 export const getCellDependencies = ({ env, names, graph }: any) => {
-  const g = graph || buildGraph(env.cells);
+  // One edge source for the whole call, so N starts share the parse of any cell they both reach.
+  // Lazy when no graph was supplied: a caller asking about one name must not pay to parse the
+  // entire sheet, which is exactly what the renderer does once per cell during a cold mount.
+  const precedentsOf = graph
+    ? (name: string) => graph.precedents.get(name) || []
+    : lazyPrecedents(env.cells);
   const allDeps = new Set<string>();
   for (const name of names) {
-    const result = findCycle(g, name);
+    const result = findCycleWith(precedentsOf, name);
     if (result.hasCycle) {
       console.error(`Circular dependency detected in cell ${name}: ${result.cyclePath?.join(' → ')}`);
       // Continue processing other cells but don't add dependencies for cyclic cells

@@ -42,7 +42,7 @@ vi.mock("@graffiticode/translatex", async () => {
 });
 
 // Imported after the mock so the engine picks up the wrapped factory.
-const { evalCell, formatCellValue, getCellDependencies } = await import("./sheet/index.js");
+const { evalCell, formatCellValue, getCellDependencies, createSheetCache } = await import("./sheet/index.js");
 const { scoreCells } = await import("./scoring/index.js");
 const fx = await import("./sheet/fixtures.js");
 
@@ -54,8 +54,8 @@ const count = (fn: () => void): number => {
 };
 
 /** Evaluate every cell once, the way a cold mount does. */
-const evaluateAll = (cells: any) => {
-  for (const name of Object.keys(cells)) evalCell({ env: { cells }, name });
+const evaluateAll = (cells: any, cache?: any) => {
+  for (const name of Object.keys(cells)) evalCell({ env: { cells }, name, cache });
 };
 
 beforeEach(() => {
@@ -143,6 +143,41 @@ describe("what a mount actually costs today", () => {
     const cells = fx.fanIn(20);
     expect(fx.formulaCount(cells)).toBe(20);
     expect(count(() => initLikeToday(cells))).toBe(20);
+  });
+});
+
+describe("the memo", () => {
+  test("a second pass over an unchanged sheet costs nothing", () => {
+    // The assertion that pins memoisation itself. Nothing pinned this before, so there was no
+    // test anywhere that would have noticed a value being recomputed.
+    const cells = fx.mixed(50);
+    const cache = createSheetCache();
+    expect(count(() => evaluateAll(cells, cache))).toBe(200);
+    expect(count(() => evaluateAll(cells, cache))).toBe(0);
+  });
+
+  test("only the cells whose inputs changed are re-parsed", () => {
+    // Written back into the map as it goes, the way recalculation does. That write-back is what
+    // makes invalidation propagate at all: the key holds the VALUES of a cell's dependencies, so
+    // a dependent is only re-parsed once its input's new value is actually stored.
+    const evaluateAndStore = (cells: any, cache: any) => {
+      for (const name of Object.keys(cells)) {
+        cells[name] = { ...cells[name], ...evalCell({ env: { cells }, name, cache }) };
+      }
+    };
+    const cells: any = fx.chain(10);
+    const cache = createSheetCache();
+    count(() => evaluateAndStore(cells, cache));
+    // One leaf changes. Its row's nine dependents follow it down the chain; the other nine rows
+    // are untouched and must not be re-parsed.
+    cells.A5 = { text: "999", formula: "999", val: "999", type: "number" };
+    expect(count(() => evaluateAndStore(cells, cache))).toBe(9);
+  });
+
+  test("no cache means no memo — behaviour is exactly as before", () => {
+    const cells = fx.mixed(50);
+    expect(count(() => evaluateAll(cells))).toBe(200);
+    expect(count(() => evaluateAll(cells))).toBe(200);
   });
 });
 
