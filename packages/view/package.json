@@ -3,7 +3,7 @@
     "access": "public"
   },
   "name": "@graffiticode/l0179-view",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "L0179 view \u2014 the spreadsheet Form and its DOM-free scoring, rendered through the shared View inherited from @graffiticode/l0000-view",
   "type": "module",
   "main": "./dist/index.js",
@@ -32,6 +32,7 @@
     "build": "tsc -p tsconfig.json && vite build",
     "build:embed": "vite build --config vite.embed.config.ts",
     "test": "vitest run",
+    "bench": "vitest bench --run",
     "preview": "vite preview --config vite.embed.config.ts",
     "lint": "eslint src embed"
   },
