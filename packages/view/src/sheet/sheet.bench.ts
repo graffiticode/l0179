@@ -13,7 +13,10 @@
  * the same cell count.
  */
 import { bench, describe } from "vitest";
-import { evalCell, formatCellValue, getCellDependencies, getResponses, getChangedCells } from "./index.js";
+import {
+  evalCell, formatCellValue, getCellDependencies, getResponses, getChangedCells,
+  buildGraph, recalculate,
+} from "./index.js";
 import { chain, fanIn, literal, mixed } from "./fixtures.js";
 
 const evaluateAll = (cells: any) => {
@@ -59,6 +62,22 @@ describe("cold evaluation, the way a mount does it today", () => {
 
   bench("chain 200 cells, init pattern", () => initLikeToday(c));
   bench("mixed 100 cells, init pattern", () => initLikeToday(m));
+});
+
+describe("cold evaluation, the way a mount does it NOW", () => {
+  // The same fixtures as the block above, through `recalculate`. The gap between the two blocks
+  // is what ordering the pass bought.
+  const seed = (cells: any) => {
+    const graph = buildGraph(cells);
+    recalculate({ cells, graph, changed: Object.keys(cells) });
+  };
+  const c = chain(20);
+  const m = mixed(10);
+  const m500 = mixed(50);
+
+  bench("chain 200 cells, ordered", () => seed(c));
+  bench("mixed 100 cells, ordered", () => seed(m));
+  bench("mixed 500 cells, ordered", () => seed(m500));
 });
 
 describe("the payloads a mount sends", () => {

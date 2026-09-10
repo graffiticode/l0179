@@ -39,6 +39,10 @@ export type { DependencyGraph, CycleResult } from "./graph.js";
 export { createSheetCache } from "./cache.js";
 export type { SheetCache } from "./cache.js";
 
+// Recalculation: one topologically-ordered pass, each affected cell evaluated exactly once.
+export { recalculate } from "./recalc.js";
+export type { RecalcResult } from "./recalc.js";
+
 export { getResponses, getChangedCells } from "./payload.js";
 
 export {

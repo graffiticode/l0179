@@ -42,7 +42,8 @@ vi.mock("@graffiticode/translatex", async () => {
 });
 
 // Imported after the mock so the engine picks up the wrapped factory.
-const { evalCell, formatCellValue, getCellDependencies, createSheetCache } = await import("./sheet/index.js");
+const { evalCell, formatCellValue, getCellDependencies, createSheetCache, recalculate, buildGraph } =
+  await import("./sheet/index.js");
 const { scoreCells } = await import("./scoring/index.js");
 const fx = await import("./sheet/fixtures.js");
 
@@ -143,6 +144,55 @@ describe("what a mount actually costs today", () => {
     const cells = fx.fanIn(20);
     expect(fx.formulaCount(cells)).toBe(20);
     expect(count(() => initLikeToday(cells))).toBe(20);
+  });
+});
+
+describe("recalculation evaluates each cell exactly once", () => {
+  const seed = (cells: any, cache?: any) => {
+    const graph = buildGraph(cells);
+    return recalculate({ cells, graph, changed: Object.keys(cells), cache });
+  };
+
+  test("a chain sheet costs one parse per formula cell, not five", () => {
+    // The counterpart to "what a mount actually costs today" above, on the same fixture. That
+    // pattern costs 900; ordering the pass costs 180, which is the floor.
+    const cells = fx.chain(20);
+    expect(fx.formulaCount(cells)).toBe(180);
+    expect(count(() => seed(cells))).toBe(180);
+  });
+
+  test("a 500-cell mixed sheet costs one parse per formula cell", () => {
+    const cells = fx.mixed(50);
+    expect(count(() => seed(cells))).toBe(200);
+  });
+
+  test("an edit re-parses only what transitively reads it", () => {
+    // 10 rows of 9 chained formulas. Editing one leaf must touch that row's nine dependents and
+    // none of the other ninety cells.
+    const cells: any = fx.chain(10);
+    const seeded = seed(cells).cells;
+    const graph = buildGraph(seeded);
+    seeded.A5 = { text: "999", formula: "999", val: "999", type: "number" };
+    expect(count(() => recalculate({ cells: seeded, graph, changed: ["A5"] }))).toBe(9);
+  });
+
+  test("an edit that changes nothing costs nothing, once a memo is in play", () => {
+    // A declared edit always propagates — by the time recalculation is called the caller has
+    // usually already written the new value, so there is nothing left to compare against. What
+    // makes a no-op edit free is the memo: every dependent's inputs are unchanged, so every key
+    // is unchanged, so every lookup is a hit.
+    const cells: any = fx.chain(10);
+    const cache = createSheetCache();
+    const seeded = seed(cells, cache).cells;
+    const graph = buildGraph(seeded);
+    expect(count(() => recalculate({ cells: seeded, graph, changed: ["A5"], cache }))).toBe(0);
+  });
+
+  test("seeding twice with a shared memo is free the second time", () => {
+    const cells = fx.mixed(50);
+    const cache = createSheetCache();
+    expect(count(() => seed(cells, cache))).toBe(200);
+    expect(count(() => seed(cells, cache))).toBe(0);
   });
 });
 
