@@ -101,6 +101,26 @@ describe("formatCellValue", () => {
     expect(formatCellValue({ env, name: "A1" })).toBe("plain");
   });
 
+  // A percent format used to render 0.75 as "1" and 0.10 as "0" — rounded to a whole number,
+  // never scaled, no sign. The defect was in `@graffiticode/translatex`'s parseFormatString (fixed
+  // in 0.24.1), but it surfaced HERE, in a deployed sheet whose six input rows all showed "0". So
+  // it is pinned from the consumer's side too: this is where a future regression would bite.
+  test.each([
+    ["0.75", "0.0%", "75.0%"],
+    ["0.10", "0.0%", "10.0%"],
+    ["0.025", "0.0%", "2.5%"],
+    ["1", "0.0%", "100.0%"],
+    ["0.07", "0.00%", "7.00%"],
+  ])("formats %s as %s -> %s", (val, format, expected) => {
+    const env = sheet({ A1: { text: val, val, type: "number", format } });
+    expect(formatCellValue({ env, name: "A1" })).toBe(expected);
+  });
+
+  test("a currency format is unaffected by the percent handling", () => {
+    const env = sheet({ A1: { text: "100000", val: "100000", type: "number", format: "$#,##0" } });
+    expect(formatCellValue({ env, name: "A1" })).toBe("$100,000");
+  });
+
   test("renders a date serial through its pattern, on the 1904 epoch", () => {
     // 1904 rather than 1900 — chosen to sidestep Excel's 1900 leap-year bug. See ../scoring.
     const env = sheet({ A1: { text: "", val: "44016", type: "date", format: "MM/DD/YYYY" } });
