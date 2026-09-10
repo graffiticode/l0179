@@ -327,15 +327,27 @@ export const scoreCells = ({ cells, validation, interactionCells = undefined }: 
   }, {});
 };
 
-/** The single-sheet scoring pass, unchanged from L0166. */
+/**
+ * The single-sheet scoring pass, semantically unchanged from L0166.
+ *
+ * The reduce this replaces seeded its accumulator with the WHOLE cells map and spread it again
+ * per assessed cell — O(assessed x cells) copies, paid on every transaction because the grid
+ * scores live to paint assess feedback.
+ *
+ * The `= undefined` is deliberate and must not become a `continue`. The original wrote the key
+ * with an undefined value for an assessed cell the response does not contain, and that is
+ * observable: `Object.keys` sees it, and Learnosity's `Scorer.score()` iterates these keys to sum
+ * `score.points`. `toEqual` would not catch the difference, which is exactly why it is spelled
+ * out here.
+ */
 function scoreAgainst(cells: any, cellsValidation: any, interactionCells: any): any {
-  return Object.keys(cellsValidation).reduce((acc: any, cellName: string) => (
-    {
-      ...acc,
-      [cellName]: (acc[cellName] && {
-        ...acc[cellName],
-        score: scoreCell(cellsValidation[cellName].assess, acc[cellName], interactionCells),
-      }) || undefined,
-    }
-  ), cells);
+  const scored: any = { ...cells };
+  for (const cellName of Object.keys(cellsValidation)) {
+    const cell = scored[cellName];
+    scored[cellName] = cell && {
+      ...cell,
+      score: scoreCell(cellsValidation[cellName].assess, cell, interactionCells),
+    } || undefined;
+  }
+  return scored;
 }

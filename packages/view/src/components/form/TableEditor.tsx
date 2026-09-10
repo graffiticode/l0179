@@ -1698,21 +1698,20 @@ const buildCellPlugin = formState => {
         // the initial update will be sent again
         initialUpdateSent = false;
         const cellExprs = self.getState(state);
-        const cells = getCells(cellExprs, state).reduce((cells, cell) => (
-          cell.row > 1 && cell.col > 1 && {
-            ...cells,
-            [cell.name]: {
-              ...cell,
-              deps: [],
-            }
-          } || cells
-        ), {});
-        const dirtyCells = getCells(cellExprs, state).reduce((dirtyCells, cell) => (
-          cell.row > 1 && cell.col > 1 && cell.text &&
-            [...dirtyCells, cell.name] ||
-            dirtyCells
-        ), []);
-        const cellsWithDeps = getCells(cellExprs, state).reduce((cells, cell) => {
+        // One document walk, not three. `getCells` is a full `doc.descendants` traversal that
+        // allocates an object per cell, and this ran it once for each of the three maps below.
+        const allDocCells = getCells(cellExprs, state);
+        // Both accumulators mutate one local instead of spreading per cell: the `{...cells}` and
+        // `[...dirtyCells]` forms were O(N^2) over every cell in the sheet.
+        const cells = {};
+        for (const cell of allDocCells) {
+          if (cell.row > 1 && cell.col > 1) cells[cell.name] = { ...cell, deps: [] };
+        }
+        const dirtyCells = [];
+        for (const cell of allDocCells) {
+          if (cell.row > 1 && cell.col > 1 && cell.text) dirtyCells.push(cell.name);
+        }
+        const cellsWithDeps = allDocCells.reduce((cells, cell) => {
           if (cell.row > 1 && cell.col > 1)  {
             const deps = getCellDependencies({env: {cells}, names: [cell.name]});
             const cellName = cell.name;

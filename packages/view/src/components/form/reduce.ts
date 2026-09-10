@@ -25,12 +25,20 @@ const mergeCell = (prev: any, next: any) => ({
   formattedValue: next?.formattedValue,
 });
 
-/** Fold reported cells into one cell map, preserving everything the report does not carry. */
-const mergeCells = (into: any, reported: any) =>
-  Object.keys(reported).reduce(
-    (acc: any, name: string) => ({ ...acc, [name]: mergeCell(acc[name], reported[name]) }),
-    into || {},
-  );
+/**
+ * Fold reported cells into one cell map, preserving everything the report does not carry.
+ *
+ * Copied once, then mutated. The spread-per-cell form this replaces was O(N^2), and the initial
+ * `update` at mount reports EVERY cell. The fresh-object identity is load-bearing — TableEditor
+ * re-seeds on the identity of `interaction.cells` — so the copy stays; only the per-cell copies go.
+ */
+const mergeCells = (into: any, reported: any) => {
+  const merged: any = { ...(into || {}) };
+  for (const name of Object.keys(reported)) {
+    merged[name] = mergeCell(merged[name], reported[name]);
+  }
+  return merged;
+};
 
 export const reduce: LanguageReducer = (data: any, { type, args }: StateAction) => {
   // Only an `update` carrying cells is ours; anything else falls through to the shared View.

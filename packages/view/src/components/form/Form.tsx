@@ -79,10 +79,11 @@ function sheetsOf(interaction: any) {
       // Per CELL, not per map — exactly as `mergeResponse` does it. A response carries only
       // {text, val, formula}, so replacing the cell wholesale would drop its `assess` rules and
       // its formatting, and the grid would stop marking the cell as assessed.
-      const cells = Object.keys(saved).reduce(
-        (acc: any, name: string) => ({ ...acc, [name]: { ...acc[name], ...saved[name] } }),
-        sheet.cells || {},
-      );
+      // One copy of the map, then mutate: the spread-per-cell form was O(N^2) in the saved set.
+      const cells: any = { ...(sheet.cells || {}) };
+      for (const name of Object.keys(saved)) {
+        cells[name] = { ...cells[name], ...saved[name] };
+      }
       return { ...sheet, cells };
     });
   }
