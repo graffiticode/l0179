@@ -35,11 +35,32 @@ import {
 import { qualify, splitBySheet } from "./sheets.js";
 
 /**
+ * Everything one scoring pass is allowed to remember.
+ *
+ * Created per `scoreCells` call and dropped when it returns. Deliberately NOT module-level: this
+ * module is loaded server-side by the Learnosity scorer, where a shared map would grow without
+ * bound across invocations and hold one tenant's cell values live while another is scored.
+ */
+interface ScoreContext {
+  /** normalizeValue, keyed on the stringified value. */
+  normalized: Map<string, any[]>;
+  /** evaluateExpectedFormula, keyed on the formula text. */
+  expected: Map<string, any>;
+  /** The `val`-augmented authored grid, built once instead of once per assessed cell. */
+  env?: any;
+}
+
+const createScoreContext = (): ScoreContext => ({
+  normalized: new Map(),
+  expected: new Map(),
+});
+
+/**
  * Run a value through the LaTeX translator so two spellings of the same thing compare equal.
  * A formula comes back as its comma-separated normal form; anything else as a single-element
  * array. Errors are logged and the original text is kept — scoring never throws.
  */
-const normalizeValue = (value: any): any[] => {
+const normalizeValue = (value: any, memo?: Map<string, any[]>): any[] => {
   // Handle non-string values (numbers, dates as serial numbers)
   if (typeof value === "number") {
     return [value];
@@ -52,6 +73,11 @@ const normalizeValue = (value: any): any[] => {
 
   // Convert to string for processing
   const text = String(value);
+  // Pure function of the stringified value, and a whole column of an assessed sheet normally
+  // carries the SAME `expected` and often the same response, so this is nearly all hits. The memo
+  // is supplied by the caller and dies with the call; see scoreCells.
+  const hit = memo && memo.get(text);
+  if (hit) return hit;
   let result: any[] = [text];
 
   try {
@@ -73,12 +99,13 @@ const normalizeValue = (value: any): any[] => {
   } catch (x: any) {
     console.log("parse error: " + x.stack);
   }
+  if (memo) memo.set(text, result);
   return result;
 };
 
-const equivFormula = (actual: any, expected: any): boolean => {
-  const normalizedActual = normalizeValue(actual);
-  const normalizedExpected = normalizeValue(expected);
+const equivFormula = (actual: any, expected: any, memo?: Map<string, any[]>): boolean => {
+  const normalizedActual = normalizeValue(actual, memo);
+  const normalizedExpected = normalizeValue(expected, memo);
 
   // Check if arrays have same length
   if (normalizedActual.length !== normalizedExpected.length) {
@@ -107,14 +134,23 @@ const equivValue = (actual: any, expected: any, actualType: any, expectedType: a
  * Evaluate an `expected` that was authored as a formula against the authored grid, so
  * `expected "=A1*2"` grades against whatever A1 actually holds this render.
  */
-export const evaluateExpectedFormula = (formula: any, interactionCells: any): any => {
+export const evaluateExpectedFormula = (formula: any, interactionCells: any, ctx?: ScoreContext): any => {
   if (!formula || !formula.startsWith("=") || !interactionCells) {
     return formula;
   }
+  // The same `expected` formula usually repeats down a whole column, and it resolves against a
+  // grid that does not change during one scoring pass — so both the env and the answer are worth
+  // keeping for the duration of the call.
+  const cached = ctx && ctx.expected.get(formula);
+  if (cached !== undefined) return cached;
   // Build env with val property from text, since TransLaTeX looks up env[name].val
-  const env: any = {};
-  for (const [name, cell] of Object.entries(interactionCells)) {
-    env[name] = { ...(cell as any), val: (cell as any).val || (cell as any).text };
+  let env = ctx && ctx.env;
+  if (!env) {
+    env = {};
+    for (const [name, cell] of Object.entries(interactionCells)) {
+      env[name] = { ...(cell as any), val: (cell as any).val || (cell as any).text };
+    }
+    if (ctx) ctx.env = env;
   }
   const options = {
     keepTextWhitespace: true,
@@ -129,6 +165,7 @@ export const evaluateExpectedFormula = (formula: any, interactionCells: any): an
       result = String(val);
     }
   });
+  if (ctx) ctx.expected.set(formula, result);
   return result;
 };
 
@@ -137,13 +174,14 @@ export const scoreCell = (
   { method, expected, points = 1 }: any,
   { val, formula, type }: any = { val: undefined, formula: undefined, type: undefined },
   interactionCells: any = undefined,
+  ctx: ScoreContext | undefined = undefined,
 ): any => {
   // For assessment by value, also consider the type
   if (method === "value") {
     // If expected is a formula, evaluate it against the interaction cells
     let resolvedExpected = expected;
     if (typeof expected === "string" && expected.startsWith("=")) {
-      resolvedExpected = evaluateExpectedFormula(expected, interactionCells);
+      resolvedExpected = evaluateExpectedFormula(expected, interactionCells, ctx);
     }
 
     // Parse expected value to determine its type if not provided
@@ -173,7 +211,7 @@ export const scoreCell = (
     if (equivValue(val, expectedVal, type, expectedType)) {
       return { points, isValid: true };
     }
-  } else if (method === "formula" && equivFormula(formula, expected)) {
+  } else if (method === "formula" && equivFormula(formula, expected, ctx && ctx.normalized)) {
     // For formula assessment, just compare the formula text
     return { points, isValid: true };
   }
@@ -260,13 +298,44 @@ const getRegionValidations = ({ cells, validation }: any) => {
   }];
 };
 
-/** One sheet's answer key, flattened to a cell-name-keyed map: `{A2: {assess: {...}}, ...}`. */
+/**
+ * The answer key, memoised on the identity of the `validation` it is derived from.
+ *
+ * It was re-derived on every call, and the renderer calls this on every transaction to paint
+ * assess feedback. Two tiers, because what it depends on is not always the same: normally it is a
+ * pure function of `validation`, but a region authored `order "actual"` re-sorts the key to match
+ * the learner's own row order, so it then depends on `cells` as well.
+ *
+ * WeakMap so nothing is retained once the model is gone — this module runs server-side.
+ */
+const keyByValidation = new WeakMap<object, { plain?: any; byCells?: WeakMap<object, any> }>();
+
+const ordersByActual = (validation: any): boolean => (
+  Object.values((validation?.regions || validation?.ranges || {}) as any)
+    .some((r: any) => r?.order === "actual")
+);
+
 const cellsValidationFor = ({ cells, validation }: any): any => {
-  const regionValidations = getRegionValidations({ cells, validation });
-  const cellsValidations = regionValidations.map((regionValidation) => (
-    getCellsValidationFromRegionValidation(regionValidation)
-  ));
-  return cellsValidations[0];
+  const derive = () => {
+    const regionValidations = getRegionValidations({ cells, validation });
+    return regionValidations.map((regionValidation) => (
+      getCellsValidationFromRegionValidation(regionValidation)
+    ))[0];
+  };
+  if (!validation || typeof validation !== "object") return derive();
+
+  let slot = keyByValidation.get(validation);
+  if (!slot) keyByValidation.set(validation, (slot = {}));
+
+  if (!ordersByActual(validation)) {
+    if (slot.plain === undefined) slot.plain = derive();
+    return slot.plain;
+  }
+  if (!cells || typeof cells !== "object") return derive();
+  if (!slot.byCells) slot.byCells = new WeakMap();
+  let keyed = slot.byCells.get(cells);
+  if (keyed === undefined) slot.byCells.set(cells, (keyed = derive()));
+  return keyed;
 };
 
 /**
@@ -314,15 +383,20 @@ export const getCellsValidation = ({ cells, validation }: any): any => {
  * sheet 1's answer key — leaving a maximum that no correct response can reach.
  */
 export const scoreCells = ({ cells, validation, interactionCells = undefined }: any): any => {
+  // One context for the whole pass, dropped on return. See ScoreContext.
+  const ctx = createScoreContext();
   const ids = sheetIdsOf(validation);
   if (!ids) {
     const cellsValidation = cellsValidationFor({ cells, validation });
-    return scoreAgainst(cells, cellsValidation, interactionCells);
+    return scoreAgainst(cells, cellsValidation, interactionCells, ctx);
   }
   const bySheet = splitBySheet(cells || {}, ids);
   return ids.reduce((acc: any, id: string) => {
     const key = cellsValidationFor({ cells: bySheet[id], validation: validation.sheets[id] });
-    const scored = scoreAgainst(bySheet[id], key, interactionFor(interactionCells, id, ids));
+    // Each sheet resolves an `expected` formula against its OWN grid, so the cached env cannot be
+    // shared across sheets; the normalizeValue memo is keyed on text and can be.
+    const sheetCtx: ScoreContext = { normalized: ctx.normalized, expected: new Map() };
+    const scored = scoreAgainst(bySheet[id], key, interactionFor(interactionCells, id, ids), sheetCtx);
     return Object.assign(acc, qualify(id, scored));
   }, {});
 };
@@ -340,13 +414,13 @@ export const scoreCells = ({ cells, validation, interactionCells = undefined }: 
  * `score.points`. `toEqual` would not catch the difference, which is exactly why it is spelled
  * out here.
  */
-function scoreAgainst(cells: any, cellsValidation: any, interactionCells: any): any {
+function scoreAgainst(cells: any, cellsValidation: any, interactionCells: any, ctx?: ScoreContext): any {
   const scored: any = { ...cells };
   for (const cellName of Object.keys(cellsValidation)) {
     const cell = scored[cellName];
     scored[cellName] = cell && {
       ...cell,
-      score: scoreCell(cellsValidation[cellName].assess, cell, interactionCells),
+      score: scoreCell(cellsValidation[cellName].assess, cell, interactionCells, ctx),
     } || undefined;
   }
   return scored;

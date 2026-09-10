@@ -265,14 +265,24 @@ describe("scoring", () => {
     expect(count(() => scoreCells({ cells, validation }))).toBe(0);
   });
 
-  test("a formula expected shared down a column is parsed once per cell today", () => {
-    // TODAY: one parse per assessed cell, even though the `expected` is byte-identical in all 100
-    // rows and every response value is the same. The target once `normalizeValue` is memoised on
-    // its stringified input is 2 — one for the shared expected, one for the shared actual.
+  test("a formula expected shared down a column is parsed once, not once per cell", () => {
+    // Was 100 — one parse per assessed cell, even though the `expected` is byte-identical in all
+    // 100 rows and every response carries the same value. Memoising `normalizeValue` on its
+    // stringified input collapses it: the actual and the expected here normalize to the same
+    // text, so the whole column costs a single parse.
     const cells = respond(100);
     const validation = fx.assessColumn(100, { expected: "=1+1", method: "formula" });
     const calls = count(() => scoreCells({ cells, validation, interactionCells: cells }));
-    expect(calls).toBe(100);
+    expect(calls).toBe(1);
+  });
+
+  test("a formula expected resolved against the grid is parsed once per distinct formula", () => {
+    // The `evaluateExpectedFormula` path: `expected "=A1*2"` grades against the authored grid, and
+    // used to clone every interaction cell into a fresh env AND re-parse, per assessed cell.
+    const cells = respond(100);
+    const validation = fx.assessColumn(100, { expected: "=A1*2", method: "value" });
+    const calls = count(() => scoreCells({ cells, validation, interactionCells: cells }));
+    expect(calls).toBe(1);
   });
 });
 
