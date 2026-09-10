@@ -1,12 +1,56 @@
 # The grid is built on ProseMirror, and probably should not be
 
-**Status:** open · **Scope:** `packages/view/src/components/form/` only
+**Status:** open, but no longer for performance reasons · **Scope:**
+`packages/view/src/components/form/` only
 
 This records a review of `TableEditor.tsx` made after L0179 took ownership of the renderer
 (`shed-l0166.md`). The question was whether ProseMirror is the right foundation, up to and
 including replacing it. The conclusion is that it is not, but that replacing it was not the right
 first move — so the waste was removed and the engine separated first, and the case is written down
 here rather than re-derived later.
+
+## What slow sheets turned out to be — and it was not this
+
+A later report that 100-500 cell sheets were slow to paint was investigated against this document,
+on the assumption that the renderer was the cause. It was not, and the correction matters because
+it removes performance from the case below.
+
+One formula evaluation costs **3-17 ms**, all of it inside TransLaTeX's `translate()`, and it grows
+with the number of cells handed to the parser as `env`. A literal cell costs ~0 ms and every other
+engine operation — dependency extraction, formatting, colour, borders — is under 0.05 ms. So the
+cost of the whole system is **how many times a formula is parsed**, and that lives in
+`packages/view/src/sheet/`, which is DOM-free and would be inherited verbatim by any new renderer.
+(`TransLaTeX.buildTranslator` is free — it returns a closure — so caching the translator, which the
+shape of the code invites, measures as worth nothing.)
+
+ProseMirror's role was amplification, not cost, and the amplification was this repo's own code:
+`state.init` marked every non-empty cell dirty, each got its own dispatch, and each dispatch
+re-entered a plugin `apply` that rebuilt the decorations for the whole sheet and rescored it. So
+the number of full-sheet rebuilds at mount was the number of populated cells. ProseMirror provides
+`tr.docChanged` and `DecorationSet.map` precisely to avoid that; neither was used.
+
+What that came to, measured (`npm run bench`):
+
+| | before | after |
+| :-- | --: | --: |
+| literal 500 cells — the floor, no formulas | 4.5 ms | 4.4 ms |
+| mixed 500 cells, one pass | 852 ms | 459 ms |
+| chain 300 cells | 939 ms | 653 ms |
+| **chain 200 cells, as a mount actually does it** | **2,838 ms** | **414 ms** |
+| `getChangedCells` over 500 names (runs on every mount) | 22.13 ms | 0.11 ms |
+| `getResponses` over 500 cells | 0.38 ms | 0.05 ms |
+| 100 assessed cells sharing one formula `expected` | 100 parses | 1 parse |
+
+Delivered by: a real dependency graph with a reverse index (`sheet/graph.ts`), one
+topologically-ordered evaluation pass (`sheet/recalc.ts`), a content-addressed memo
+(`sheet/cache.ts`), narrowing the parser env to the cells a formula actually reads, removing eight
+O(N^2) spread-accumulator reduces, and two guards in the ProseMirror layer. The gate is
+`src/perf.test.ts`, which counts `translate()` invocations — call counts do not flake in CI the way
+wall clock does.
+
+**None of the above argues for or against replacing the renderer.** The case below stands on what
+it always stood on: bundle size, and the share of `TableEditor.tsx` that exists only to make a text
+editor behave like a grid.
 
 ## The measurements
 
@@ -91,8 +135,15 @@ a re-skin of the remaining renderer, not a rewrite of the spreadsheet.
   `createScorer` from the `@graffiticode/learnosity-cqt` root barrel, which re-exports
   `createQuestion`, which imports `react-dom/client` — and that package declares no `sideEffects`.
   The fix is a scorer subpath from that shared package.
+- **The shared View's serialization is fixed but not yet consumed.**
+  `@graffiticode/l0000-view` serialized the whole model twice per dispatched action, and once per
+  render, to decide whether anything had changed. That is fixed in the `l0000` checkout and
+  released as **0.1.4**; this repo's `^0.1.3` range already accepts it, so it needs only a publish.
+  Until then a share of the per-interaction cost is still paid here and is not attributable to
+  anything in this repo.
 - Two inherited defects remain annotated rather than fixed: `[...cell?.deps]` throws when `deps` is
-  undefined, and `getRegionValidations` scores only the first row region.
+  undefined, and `getRegionValidations` scores only the first row region. Both were deliberately
+  preserved through the performance work, which touched all the code around them.
 - The grid is capped at **26 columns**: `makeEditorState` derives width with `cellName.slice(0, 1)`
   against a 27-character alphabet. The compiler agrees — its address entry is `^[A-Z][0-9]+$` — so
   the limit is consistent, but `schema.json` advertises `^[A-Z]+[0-9]+$`.
