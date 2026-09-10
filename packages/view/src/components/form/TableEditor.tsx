@@ -848,6 +848,34 @@ const getAdjacentCellNodeByName = ({ state, name }) => {
 //   return result;
 // };
 
+/**
+ * Write formatted text into many cells in ONE transaction.
+ *
+ * Doing it per cell is what made a cold mount expensive out of all proportion to the sheet: every
+ * non-empty cell was marked dirty, each got its own `replaceCellContent`, and each dispatch
+ * re-entered the plugin's `apply` — which rebuilds the decorations for the WHOLE sheet and
+ * rescores it. So the number of full-sheet rebuilds at mount was the number of populated cells.
+ *
+ * Positions are resolved against the pre-change document and then mapped forward, because each
+ * replacement shifts everything after it.
+ */
+const replaceCellContents = (editorView, updates) => {
+  const { state, dispatch } = editorView;
+  const tr = state.tr;
+  tr.setMeta("systemFormatting", true);
+  for (const { name, text } of updates) {
+    const { pos, node } = getCellNodeByName({ state, name });
+    if (!node || !isTableCellOrHeader(node)) continue;
+    const from = tr.mapping.map(pos + 1);
+    const to = tr.mapping.map(pos + node.nodeSize - 1);
+    const paragraphNode = text &&
+      state.schema.node("paragraph", null, state.schema.text(text)) ||
+      state.schema.node("paragraph");
+    tr.replaceWith(from, to, paragraphNode);
+  }
+  if (tr.docChanged) dispatch(tr);
+};
+
 const replaceCellContent = (editorView, name, newText, doMoveCursor = false) => {
   const { state, dispatch } = editorView;
   const { pos: cellPos, node: cellNode } = getCellNodeByName({state, name});
@@ -1672,17 +1700,22 @@ const buildCellPlugin = formState => {
               });
             }
           });
+          // Collected, then written in ONE transaction. A dispatch per cell meant a full-sheet
+          // decoration rebuild and rescore per cell, so a cold mount paid that once for every
+          // populated cell in the sheet.
+          const pending = [];
           pluginState.dirtyCells.forEach(name => {
             cells[name] = {
               ...cells[name],
-              ...evalCell({ env: {cells}, name }),
+              ...evalCell({ env: {cells}, name, cache: pluginState.cache }),
             };
             const formattedVal = fixText(formatCellValue({env: {cells}, name}));
             const { node } = getCellNodeByName({state: view.state, name});
             if (name !== pluginState.focusedCell && formattedVal !== node.textContent) {
-              replaceCellContent(view, name, formattedVal);
+              pending.push({ name, text: formattedVal });
             }
           });
+          if (pending.length) replaceCellContents(view, pending);
           if (pluginState.focusedCell) {
             const name = pluginState.focusedCell;
             const text = fixText(pluginState.cells[name]?.text || "");
@@ -1751,6 +1784,9 @@ const buildCellPlugin = formState => {
       },
       apply(tr, value, oldState, state) {
         oldState = oldState;
+        // What the decorations were computed from on the way in, so the tail can tell whether
+        // anything they depend on actually moved.
+        const before = value;
         if (tr.getMeta("updated")) {
           value = {
             ...value,
@@ -1888,6 +1924,21 @@ const buildCellPlugin = formState => {
               },
             },
           };
+        }
+        // Rebuilding is O(cells) and drags a full rescore with it — a document walk, a colour and
+        // a style string per cell, and a fresh DecorationSet over the whole array. It ran
+        // unconditionally, on every transaction, including the many that cannot change what a
+        // decoration shows. Only the inputs below can.
+        const stale = tr.docChanged
+          || tr.selectionSet
+          || value.cells !== before.cells
+          || value.focusedCell !== before.focusedCell
+          || value.lastFocusedCell !== before.lastFocusedCell
+          || !before.decorations;
+        if (!stale) {
+          // Positions are unchanged when the doc is, so this is a no-op mapping rather than a
+          // rebuild — but it keeps the set correct if that ever stops being true.
+          return { ...value, decorations: before.decorations.map(tr.mapping, tr.doc) };
         }
         const cellExprs = self.getState(state);
         const validation = formState.data?.validation || null;
