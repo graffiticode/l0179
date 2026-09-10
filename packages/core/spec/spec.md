@@ -176,6 +176,7 @@ Available inside a `text` or `expected` value that begins with `=`.
 | `SUM` | `=SUM(A1:A10)` | Adds numeric values in a range. |
 | `AVERAGE` | `=AVERAGE(A1:A10)` | Arithmetic mean. |
 | `ROUND` | `=ROUND(A1,2)` | Rounds to a number of decimal places. |
+| `POWER` | `=POWER(A1,2)` | Raises a base to an exponent. |
 | `IF` | `=IF(A1,B1,C1)` | Conditional value. |
 
 ## Examples

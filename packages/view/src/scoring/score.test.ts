@@ -53,6 +53,24 @@ describe("scoreCell", () => {
     expect(scoreCell(assess, { formula: "=sum(a1:a3)" })).toEqual({ points: 2, isValid: true });
   });
 
+  test("an expected written with POWER is evaluated exactly, not through Math.pow", () => {
+    // 1.05^4 is 1.21550625. A float would make it 1.2155062500000004 and nothing a learner can
+    // type would ever match, so scoring is where POWER's use of Decimal earns its keep.
+    const assess = { method: "value", expected: "=POWER(A1,4)", points: 1 };
+    const interactionCells = { A1: { text: "1.05" } };
+    expect(scoreCell(assess, { val: "1.21550625", type: "number" }, interactionCells))
+      .toEqual({ points: 1, isValid: true });
+  });
+
+  test("an expected dividing by a call grades against the value, not a concatenation", () => {
+    // Before function calls next to `*` and `/` were bracketed, this expected evaluated to the
+    // text "100B1,B2" and no response could match it. See prepareFormula.
+    const assess = { method: "value", expected: "=A1/POWER(B1,B2)", points: 1 };
+    const interactionCells = { A1: { text: "100" }, B1: { text: "2" }, B2: { text: "3" } };
+    expect(scoreCell(assess, { val: "12.5", type: "number" }, interactionCells))
+      .toEqual({ points: 1, isValid: true });
+  });
+
   test("an expected written as a formula is evaluated against the authored grid", () => {
     // `expected "=A1*2"` must grade against whatever A1 holds this render.
     const assess = { method: "value", expected: "=A1*2", points: 1 };

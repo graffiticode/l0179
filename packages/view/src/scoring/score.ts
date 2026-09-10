@@ -23,9 +23,10 @@
  * the authored grid, passed through so an `expected` written as a formula can be evaluated
  * against it.
  */
-import { TransLaTeX, spreadsheetExpanders } from "@graffiticode/translatex";
+import { TransLaTeX } from "@graffiticode/translatex";
 
 import { evalRules, normalizeRules } from "./translatex-rules.js";
+import { expanders, prepareFormula } from "./translatex-extensions.js";
 import {
   toUpperCase,
   wrapPlainTextInLatex,
@@ -88,7 +89,7 @@ const normalizeValue = (value: any, memo?: Map<string, any[]>): any[] => {
     };
     if (text && text.length > 0) {
       const processedText = text.indexOf("=") === 0 ? toUpperCase(text) : wrapPlainTextInLatex(text);
-      const translate = TransLaTeX.buildTranslator(options, spreadsheetExpanders);
+      const translate = TransLaTeX.buildTranslator(options, expanders);
       translate(processedText, (err: any, val: any) => {
         if (err && err.length) {
           console.error(err);
@@ -157,8 +158,8 @@ export const evaluateExpectedFormula = (formula: any, interactionCells: any, ctx
     env,
     ...evalRules,
   };
-  const processedText = toUpperCase(formula);
-  const translate = TransLaTeX.buildTranslator(options, spreadsheetExpanders);
+  const processedText = prepareFormula(formula);
+  const translate = TransLaTeX.buildTranslator(options, expanders);
   let result = formula;
   translate(processedText, (err: any, val: any) => {
     if (!err || !err.length) {

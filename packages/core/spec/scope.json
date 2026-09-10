@@ -6,7 +6,7 @@
     "Multiple sheets in one item, with tabs and a sheet menu to move between them",
     "Column / row / region styling: width, alignment, fonts, colors, borders",
     "Cell text, formatting, and per-cell properties",
-    "Formulas (SUM, AVERAGE, ROUND, IF, arithmetic)",
+    "Formulas (SUM, AVERAGE, ROUND, POWER, IF, arithmetic)",
     "Parameterized values that vary per render (templateVariablesRecords)",
     "Assessed cells: value-equivalence, formula-equivalence, per-cell points and partial credit",
     "Display and worksheet (non-assessed) modes",

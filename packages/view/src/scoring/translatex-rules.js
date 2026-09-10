@@ -4,6 +4,7 @@ export const evalRules = {
     "average": "average",
     "if": "if",
     "mul": "mul",
+    "power": "power",
     "round": "round",
     "sum": "sum",
   },
@@ -22,6 +23,7 @@ export const evalRules = {
       "average",
       "if",
       "mul",
+      "power",
       "round",
       "sum",
     ]
@@ -84,6 +86,7 @@ export const cellNameRules = {
       "average",
       "if",
       "mul",
+      "power",
       "round",
       "sum",
     ]
@@ -149,6 +152,7 @@ export const normalizeRules = {
       "average",
       "if",
       "mul",
+      "power",
       "round",
       "sum",
     ]

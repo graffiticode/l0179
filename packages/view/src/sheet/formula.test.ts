@@ -61,6 +61,60 @@ describe("evalCell", () => {
     expect(r.error).toContain("NOPE");
   });
 
+  describe("POWER", () => {
+    // Integer exponents have to be EXACT: `Math.pow(1.05, 4)` is 1.2155062500000004, and a scored
+    // cell compares the learner's typed value against this string.
+    const rates = () => sheet({ A1: leaf("2"), A2: leaf("3"), B8: leaf("0.05"), B10: leaf("0.1"), B2: leaf("1"), B3: leaf("5") });
+
+    test.each([
+      ["=POWER(A1,A2)", "8"],
+      ["=POWER(2,10)", "1024"],
+      ["=POWER(1+B8,B3-B2)", "1.21550625"],
+      ["=POWER(A1,-A2)", "0.125"],
+      ["=POWER(-A1,A2)", "-8"],
+      ["=POWER(SUM(A1,A2),2)", "25"],
+      ["=power(a1,a2)", "8"],
+    ])("%s evaluates to %s", (formula, expected) => {
+      expect(evalIn(rates(), formula).val).toBe(expected);
+    });
+
+    test("POWER is a known name, so it is never #NAME!", () => {
+      expect(evalIn(rates(), "=POWER(A1,A2)").type).toBe("number");
+    });
+
+    test("a missing argument is #NUM! rather than a thrown error", () => {
+      expect(evalIn(rates(), "=POWER(A1)").val).toBe("#NUM!");
+    });
+  });
+
+  // A function call on the RIGHT of `*` or `/` parses as (lhs x NAME) applied to a separate
+  // argument list -- the call is lost and the formula evaluates to a concatenation. Bracketing it
+  // in prepareFormula is the fix; these pin it for every function, not just POWER, because the
+  // defect was never specific to POWER.
+  describe("a function call as the right operand of * or /", () => {
+    const rates = () => sheet({ A1: leaf("2"), A2: leaf("3"), A3: leaf("4"), B10: leaf("0.1"), B2: leaf("1"), A28: leaf("3"), H28: leaf("100") });
+
+    test.each([
+      ["=A1/SUM(A1,A2)", "0.4"],
+      ["=A1*SUM(A1,A2)", "10"],
+      ["=A1*ROUND(A2,0)", "6"],
+      ["=A1/AVERAGE(A1:A3)", "0.66666666666666666667"],
+      ["=H28/POWER(1+B10,A28-B2)", "82.644628099173553719"],
+      ["=SUM(A1,A2)/A1", "2.5"],
+      ["=AVERAGE(A1:A3)/A1", "1.5"],
+      ["=A1/SUM(A1,A2)*A3", "1.6"],
+      ["=A1/POWER(SUM(A1,A3)/A2,2)", "0.5"],
+    ])("%s evaluates to %s", (formula, expected) => {
+      expect(evalIn(rates(), formula).val).toBe(expected);
+    });
+
+    test("the operators it does not affect keep parsing as they did", () => {
+      expect(evalIn(rates(), "=A1+SUM(A1,A2)").val).toBe("7");
+      expect(evalIn(rates(), "=A1-SUM(A1,A2)").val).toBe("-3");
+      expect(evalIn(rates(), "=SUM(A1,A2)*A1").val).toBe("10");
+    });
+  });
+
   test("a circular reference is #CYCLE! and reports the path", () => {
     const env = sheet({ A1: f("=B1"), B1: f("=A1") });
     const r = evalCell({ env, name: "A1" });

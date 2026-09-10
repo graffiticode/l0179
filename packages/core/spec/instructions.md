@@ -179,7 +179,7 @@ nothing at all, so use exactly `top`, `bottom`, `left`, `right`, or `all`.
 cell A4 [text "=ROUND(SUM(A1:A3),1)"]
 ```
 
-Available in formulas: `SUM`, `AVERAGE`, `ROUND`, `IF`, and arithmetic.
+Available in formulas: `SUM`, `AVERAGE`, `ROUND`, `POWER`, `IF`, and arithmetic.
 
 ## Assessed cells
 
