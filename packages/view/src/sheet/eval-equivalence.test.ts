@@ -11,7 +11,7 @@ import { test, expect, describe } from "vitest";
 import { evalCell, formatCellValue, buildGraph } from "./index.js";
 import { createSheetCache } from "./cache.js";
 import { TransLaTeX, spreadsheetExpanders } from "@graffiticode/translatex";
-import { evalRules } from "../scoring/translatex-rules.js";
+import { evalRules } from "../scoring/translatex-extensions.js";
 import { toUpperCase } from "../scoring/index.js";
 
 const leaf = (v: string) => ({ text: v, formula: v, val: v, type: "number" });

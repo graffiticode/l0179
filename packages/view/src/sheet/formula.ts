@@ -17,8 +17,9 @@
  */
 import { TransLaTeX } from "@graffiticode/translatex";
 
-import { evalRules, formatRules } from "../scoring/translatex-rules.js";
-import { expanders, prepareFormula } from "../scoring/translatex-extensions.js";
+import { formatRules } from "../scoring/translatex-rules.js";
+import { evalRules, expanders, prepareFormula } from "../scoring/translatex-extensions.js";
+import { spreadsheetErrorMarker } from "@graffiticode/translatex/src/spreadsheet.js";
 import {
   isNumeric,
   wrapPlainTextInLatex,
@@ -58,9 +59,18 @@ export const evalCell = ({ env, name, graph, cache }: any): CellValue => {
     const supportedFunctions = evalRules.types.fn;
     const namePattern = /([A-Za-z][A-Za-z0-9_]*)/g;
     const cellNamePattern = /^[A-Za-z]+[0-9]+$/; // Pattern for valid cell names like A1, B2, AA10
+    // Blank the quoted segments first. WITHOUT THIS the scan reads inside
+    // string literals and calls their words undefined names, so
+    // `=IF(A1,"Yes","No")` reported `Undefined names: Yes, No` — and worse, it
+    // MASKED the real error: the parser rejects a double quote outright with a
+    // clean 1004, and this returned a wrong #NAME! before that could surface.
+    // Same treatment sheet/graph.ts already gives dependency extraction.
+    const scannable = text
+      .replace(/"[^"]*"/g, '""')
+      .replace(/'[^']*'/g, "''");
     let match;
     const undefinedNames = [];
-    while ((match = namePattern.exec(text)) !== null) {
+    while ((match = namePattern.exec(scannable)) !== null) {
       const name = match[1];
       const nameLower = name.toLowerCase();
       // Skip if it's a valid cell reference (letters followed by numbers)
@@ -151,7 +161,29 @@ export const evalCell = ({ env, name, graph, cache }: any): CellValue => {
       const translate = TransLaTeX.buildTranslator(options, expanders);
       translate(processedText, (err, val) => {
         if (err && err.length) {
-          console.error(err);
+          // A translation error is now REPORTED, not logged and discarded.
+          //
+          // It used to fall through to `val`, which is "" on the error path, so
+          // an unparseable formula produced a silently EMPTY cell — the same
+          // silent-wrong-answer class as the rest of this work. It went
+          // unnoticed because the #NAME! pre-scan above happened to catch the
+          // common cases first, and, for a formula containing a string, caught
+          // it WRONGLY: it reported the string's words as undefined names and
+          // masked the real 1004 underneath.
+          //
+          // Codes translatex names get their spreadsheet marker from it;
+          // anything else (1001/1003/1004 are the parser's syntax codes) shows
+          // #NAME!, which is what this cell displayed before and what Excel
+          // shows for text it cannot resolve in a formula.
+          const first: any = err[0];
+          const code = first && first.errorCode;
+          result = {
+            ...result,
+            val: spreadsheetErrorMarker(code) || "#NAME!",
+            type: 'error',
+            error: String(first && first.message ? first.message : first),
+          } as any;
+          return;
         }
         // Store val as string but set appropriate type
         // Check if it's a date format first

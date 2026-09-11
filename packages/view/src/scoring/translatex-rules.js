@@ -1,123 +1,20 @@
 // SPDX-License-Identifier: MIT
-export const evalRules = {
-  "words": {
-    "average": "average",
-    "if": "if",
-    "mul": "mul",
-    "power": "power",
-    "round": "round",
-    "sum": "sum",
-  },
-  "types": {
-    "args": [
-      "\\type{cellName}:\\type{cellName}",
-      "?,?"
-    ],
-    "cellName": [
-      "\\type{variable}\\type{integer}"
-    ],
-    "cellRange": [
-      "\\type{cellName}:\\type{cellName}"
-    ],
-    "fn": [
-      "average",
-      "if",
-      "mul",
-      "power",
-      "round",
-      "sum",
-    ]
-  },
-  "rules": {
-    "=\\type{cellName}": [
-      "$cell"
-    ],
-    "=?": [
-      {
-        "%2": {
-          "\\type{fn}(\\type{args})": "$fn",
-          "\\type{fn}(?,?)": "$fn",
-          "\\type{fn}(?)": "$fn",
-          "?+?": "$add",
-          "?-?": "$minus",
-          "?*?": "$multiply",
-          "?/?": "$divide",
-          "?%": "$percent",
-          "-?": "$minus"
-        }
-      }
-    ],
-    "-?": [
-      "-%1"
-    ],
-    "\\type{cellRange}": [
-      "$range"
-    ],
-    "\\type{args}": [
-      "%1,%2"
-    ],
-    "\\type{cellName}": [
-      "%1%2"
-    ],
-    "\\type{fn}(\\type{cellRange})": [
-      "%1(%2)"
-    ],
-    "??": [
-      "%1%2"
-    ],
-    "{{var:\\type{cellName}}}": [
-      "{{var:%2}}"
-    ],
-    "?": [
-      "%1"
-    ]
-  }
-};
-
-export const cellNameRules = {
-  "types": {
-    "cellName": [
-      "\\type{variable}\\type{integer}"
-    ],
-    "cellRange": [
-      "\\type{cellName}:\\type{cellName}"
-    ],
-    "fn": [
-      "average",
-      "if",
-      "mul",
-      "power",
-      "round",
-      "sum",
-    ]
-  },
-  "rules": {
-    "\\type{cellName}": [
-      "%1%2"
-    ],
-    "=?": [
-      {
-        "%2": {
-          "\\type{fn}(\\type{cellRange})": "%2",
-          "?+?": "%1,%2",
-          "?-?": "%1,%2",
-          "?*?": "%1,%2",
-          "?/?": "%1,%2",
-          "\\type{cellName}": "%1%2"
-        }
-      }
-    ],
-    "\\type{cellRange}": [
-      "$range"
-    ],
-    "??": [
-      "%1%2"
-    ],
-    "?": [
-      "%1"
-    ]
-  },
-}
+/**
+ * The rule sets translatex does NOT generate.
+ *
+ * `evalRules` used to live here too and no longer does: translatex 0.25.0
+ * derives it — including `words` and `types.fn` — from the function registry, so
+ * adding a function is one descriptor instead of four edits that have to agree.
+ * See translatex-extensions.ts.
+ *
+ * `cellNameRules` is gone outright. It was for dependency extraction, which
+ * stopped going through TransLaTeX when the rule set turned out to glue the
+ * function name onto the first cell name (`=SUM(A1:A3)` -> ["SUMA1","A2","A3"],
+ * losing A1). sheet/graph.js parses the references directly now.
+ *
+ * These two remain because they have no registry to be derived from: they are
+ * presentation and comparison, not a vocabulary of functions.
+ */
 
 export const formatRules = {
   "rules": {

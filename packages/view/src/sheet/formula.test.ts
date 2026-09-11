@@ -115,6 +115,66 @@ describe("evalCell", () => {
     });
   });
 
+  describe("comparison operators in IF", () => {
+    // L0179 had NO test for these, which is how it shipped for so long with
+    // every comparison IF taking the true branch regardless: the rule set had
+    // no pattern for the comparison node, so the second operand was DISCARDED
+    // and the condition was the non-empty string "A1". Half the cases looked
+    // right, because the true branch was often the right answer.
+    const cmp = () => sheet({ A1: leaf("10"), A2: leaf("20") });
+
+    test.each([
+      ["=IF(A1>99,100,200)", "200"],
+      ["=IF(A1>1,100,200)", "100"],
+      ["=IF(A1<1,100,200)", "200"],
+      ["=IF(A1<99,100,200)", "100"],
+      ["=IF(A1>=10,100,200)", "100"],
+      ["=IF(A1>=11,100,200)", "200"],
+      ["=IF(A1<=10,100,200)", "100"],
+      ["=IF(A1<=9,100,200)", "200"],
+      ["=IF(A1=10,100,200)", "100"],
+      ["=IF(A1=11,100,200)", "200"],
+      ["=IF(A1!=10,100,200)", "200"],
+      ["=IF(A1!=11,100,200)", "100"],
+      ["=IF(A1>A2,100,200)", "200"],
+      ["=IF(A2>A1,100,200)", "100"],
+    ])("%s evaluates to %s", (formula, expected) => {
+      expect(evalIn(cmp(), formula).val).toBe(expected);
+    });
+
+    test("a bare truthy value still works, which was the only form that ever did", () => {
+      expect(evalIn(cmp(), "=IF(A1,100,200)").val).toBe("100");
+    });
+  });
+
+  describe("#NAME! detection does not read inside string literals", () => {
+    test("a formula with strings reports the real error, not invented names", () => {
+      // It used to scan the raw text, so the words INSIDE a string were called
+      // undefined names — and that masked the genuine parse error underneath.
+      // Strings are not supported yet (they need parselatex 1.8.0 and an
+      // option translatex does not pass), so the honest answer is the parser's.
+      const r = evalIn(base(), '=IF(A1,"Yes","No")');
+      expect(r.val).toBe("#NAME!");
+      expect(r.error).not.toContain("Yes");
+      expect(r.error).toMatch(/Invalid character/);
+    });
+
+    test("a genuinely unknown function is still caught", () => {
+      const r = evalIn(base(), "=NOPE(1)");
+      expect(r.val).toBe("#NAME!");
+      expect(r.error).toContain("NOPE");
+    });
+  });
+
+  test("a translation error is reported, not silently blank", () => {
+    // The callback used to log the error and fall through to `val`, which is ""
+    // on the error path — so an unparseable formula produced an EMPTY cell with
+    // no indication anything was wrong.
+    const r = evalIn(base(), '=A1+"x"');
+    expect(r.val).not.toBe("");
+    expect(r.type).toBe("error");
+  });
+
   test("a circular reference is #CYCLE! and reports the path", () => {
     const env = sheet({ A1: f("=B1"), B1: f("=A1") });
     const r = evalCell({ env, name: "A1" });
