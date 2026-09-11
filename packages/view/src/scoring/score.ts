@@ -25,8 +25,8 @@
  */
 import { TransLaTeX } from "@graffiticode/translatex";
 
-import { evalRules, normalizeRules } from "./translatex-rules.js";
-import { expanders, prepareFormula } from "./translatex-extensions.js";
+import { normalizeRules } from "./translatex-rules.js";
+import { evalRules, expanders, prepareFormula } from "./translatex-extensions.js";
 import {
   toUpperCase,
   wrapPlainTextInLatex,
