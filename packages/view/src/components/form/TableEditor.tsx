@@ -1616,8 +1616,7 @@ const makeProtectedCellsPlugin = (tooltipHandler) => new Plugin({
 const buildCellPlugin = formState => {
   let initialUpdateSent = false;
   const self = new Plugin({
-    view(editorView) {
-      editorView = editorView;
+    view(_editorView) {
       return {
         update(view) {
           const { state, dispatch } = view;
@@ -1728,8 +1727,7 @@ const buildCellPlugin = formState => {
       };
     },
     state: {
-      init(config, state) {
-        config = config;
+      init(_config, state) {
         // Reset initialUpdateSent so that when editor is reinitialized with new cells,
         // the initial update will be sent again
         initialUpdateSent = false;
@@ -1782,8 +1780,7 @@ const buildCellPlugin = formState => {
           decorations,
         }
       },
-      apply(tr, value, oldState, state) {
-        oldState = oldState;
+      apply(tr, value, _oldState, state) {
         // What the decorations were computed from on the way in, so the tail can tell whether
         // anything they depend on actually moved.
         const before = value;
@@ -2340,7 +2337,7 @@ export const TableEditor = ({ state, onEditorViewChange = undefined }: any) => {
   const tooltipHandler = {
     showTooltip: (event) => {
       // Try to get position from mouse event or element
-      let x = 0, y = 0;
+      let x: number, y: number;
       if (event.clientX && event.clientY) {
         // Mouse event with coordinates
         x = event.clientX;

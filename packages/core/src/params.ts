@@ -79,7 +79,6 @@ export function buildEnv(keys, vals) {
 
 export function evalExpr(env, expr, resume) {
   if (expr.indexOf('=') === 0) {
-    expr = expr.substring(1);
     assert(false, "not yet implemented");
   } else {
     resume([], expr);
