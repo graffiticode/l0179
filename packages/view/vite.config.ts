@@ -17,16 +17,20 @@ export default defineConfig({
   build: {
     lib: {
       entry: {
-        index: resolve(__dirname, "src/index.ts"),
-        scoring: resolve(__dirname, "src/scoring/index.ts"),
+        index: resolve(import.meta.dirname, "src/index.ts"),
+        scoring: resolve(import.meta.dirname, "src/scoring/index.ts"),
       },
       formats: ["es"],
+      // Keep the extracted stylesheet at dist/style.css (the "./style.css" export); since
+      // Vite 6 library mode otherwise names it after the package.
+      cssFileName: "style",
     },
-    rollupOptions: {
+    rolldownOptions: {
       external: ["react", "react-dom", "react-dom/client", "react/jsx-runtime"],
     },
     sourcemap: true,
     emptyOutDir: true,
   },
-  plugins: [react(), dts({ rollupTypes: true })],
+  // bundleTypes emits the bundled .d.ts per entry (needs @microsoft/api-extractor).
+  plugins: [react(), dts({ bundleTypes: true })],
 });

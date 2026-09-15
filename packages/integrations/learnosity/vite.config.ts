@@ -41,7 +41,7 @@ const authoringLayout = (): Plugin => ({
 export const cqtConfig = (entry: "question" | "scorer"): UserConfig => ({
   build: {
     lib: {
-      entry: resolve(__dirname, `src/${entry}.ts`),
+      entry: resolve(import.meta.dirname, `src/${entry}.ts`),
       formats: ["iife"],
       // The entry calls LearnosityAmd.define for its effect and exports nothing, so the
       // global this name would create is never read.
@@ -55,7 +55,7 @@ export const cqtConfig = (entry: "question" | "scorer"): UserConfig => ({
     // Terser, not the esbuild default: these bundles are fetched by Learnosity on every
     // question render, and terser gets them ~30% smaller.
     minify: "terser",
-    rollupOptions: {
+    rolldownOptions: {
       output: {
         // Vite would name the extracted stylesheet style.css. It has to be question.css --
         // that is the URL L0176's buildCustom points Learnosity at.
