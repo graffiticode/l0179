@@ -87,6 +87,46 @@ describe("evalCell", () => {
     });
   });
 
+  describe("^", () => {
+    // parselatex reads `^` as a LaTeX superscript and the rule set had no pattern for it, so the
+    // exponent was dropped: `=2^3` was 2. It is spelled POWER(a,b) before parsing, by Excel's rules.
+    const pow = () => sheet({ A1: leaf("2"), A2: leaf("3"), A3: leaf("4"), B7: leaf("0.005"), B8: leaf("360") });
+
+    test.each([
+      ["=2^3", "8"],
+      ["=2^10", "1024"],
+      ["=A1^A2", "8"],
+      ["=A1 ^ A2", "8"],
+      ["=$A$1^$A$2", "8"],
+      ["=(1+B7)^(12*A1)", "1.1271597762053917414"],
+      ["=12*A1^2", "48"],
+      ["=A1^2*3", "12"],
+      ["=A1^A2+1", "9"],
+      ["=2^3^2", "64"],        // left-associative, as in Excel
+      ["=-2^2", "4"],          // unary minus belongs to the base, as in Excel
+      ["=0-2^2", "-4"],        // binary minus does not
+      ["=A1*-A2^2", "18"],
+      ["=2^-1", "0.5"],
+      ["=50%^2", "0.25"],
+      ["=SUM(A1:A3)^2", "81"],
+      ["=POWER(A1,2)^2", "16"],
+      ["=A1/(1+B7)^2", "1.980149006212717507"],
+    ])("%s evaluates to %s", (formula, expected) => {
+      expect(evalIn(pow(), formula).val).toBe(expected);
+    });
+
+    test("^ in a comparison and inside a string", () => {
+      expect(evalIn(pow(), '=IF(A1^2>3,"big","small")').val).toBe("big");
+      expect(evalIn(pow(), '="2^3"').val).toBe("2^3");
+    });
+
+    test("a payment formula written with ^ matches the one written with POWER", () => {
+      const env = sheet({ ...pow().cells, B6: leaf("320000") });
+      expect(evalIn(env, "=ROUND(B6*B7*(1+B7)^B8/((1+B7)^B8-1),2)").val)
+        .toBe(evalIn(env, "=ROUND(B6*B7*POWER(1+B7,B8)/(POWER(1+B7,B8)-1),2)").val);
+    });
+  });
+
   // A function call on the RIGHT of `*` or `/` parses as (lhs x NAME) applied to a separate
   // argument list -- the call is lost and the formula evaluates to a concatenation. Bracketing it
   // in prepareFormula is the fix; these pin it for every function, not just POWER, because the

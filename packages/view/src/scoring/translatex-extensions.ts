@@ -126,32 +126,6 @@ const matchParen = (text: string, open: number): number => {
 };
 
 /**
- * Upper-case a formula, drop `$` anchors (see stripAbsoluteReferences), spell `<>` as `!=`, and
- * bracket any function call that is an operand of `*` or `/`.
- *
- * THIS IS STILL NEEDED, and it is worth being clear why, because the rest of
- * this file just got much smaller and it would be easy to assume this went too.
- * The defect is in parselatex, not translatex: application by juxtaposition is
- * assembled at the LOWEST multiplicative precedence, so every explicit
- * multiplicative operator binds tighter and closes over the bare callee.
- *
- *     =A1/SUM(A1,A2)     the call is lost
- *     =SUM(A1,A2)/A1     the argument list becomes the numerator, and it throws
- *     =SUM(A1,A2)*A1     parses correctly
- *
- * parselatex 1.8.0 fixes this properly, with a real application production —
- * but only for a caller that declares its function names as `{type:'function'}`
- * in env, and translatex 0.25.0 does not. When it does, every case below
- * becomes a test of the parser fix and this function can go.
- *
- * A redundant pair of brackets is the whole workaround: `=A1/(SUM(A1,A2))`
- * evaluates correctly. Every call that is an operand of `*` or `/` is
- * bracketed, rather than only the three of those four positions that are
- * broken — `=SUM(A1,A2)*A1` already parses, and brackets leave it alone. The
- * scan is left to right and bracketing does not skip the bracketed region, so a
- * call nested inside another call is reached on the same pass.
- */
-/**
  * Excel's not-equal, `<>`, spelled `!=` outside quoted text.
  *
  * The rule set has `?!=?` and nothing for `<>`, and parselatex has no `<>` token, so `A1<>A2` lexed
@@ -177,8 +151,131 @@ const spellNotEqual = (text: string): string => {
   return out;
 };
 
+/**
+ * Excel's exponent, `a^b`, spelled `POWER(a,b)` outside quoted text.
+ *
+ * parselatex reads `^` as a LaTeX superscript, which is wrong for a spreadsheet in four ways:
+ * `2^10` takes one digit of the exponent (20), `(1+B7)^(12*A14)` loses part of its exponent,
+ * `2^3^2` groups to the right (512), and `-2^2` negates after raising (-4). Before this, `^` had no
+ * rule at all and the exponent was silently dropped: `=2^3` was 2.
+ *
+ * Rewriting to POWER reuses its exact Decimal arithmetic and follows Excel's rules: `^` groups to
+ * the left (`2^3^2` is 64) and a leading unary minus belongs to the base (`-2^2` is 4). An operand is
+ * a number, reference, function call, parenthesised group or string, with any unary signs before it
+ * and a postfix `%` after it.
+ */
+const OPERAND_CHAR = /[A-Z0-9_.:]/;
+const PRECEDES_UNARY = /[=(,<>+\-*/^&!]/;
+
+const operandStart = (text: string, end: number): number => {
+  let i = end;
+  while (i >= 0 && text[i] === " ") i--;
+  while (i >= 0 && text[i] === "%") { i--; while (i >= 0 && text[i] === " ") i--; }
+  if (text[i] === ")") {
+    let depth = 0;
+    for (; i >= 0; i--) {
+      if (text[i] === ")") depth++;
+      else if (text[i] === "(" && --depth === 0) break;
+    }
+    i--;
+    while (i >= 0 && OPERAND_CHAR.test(text[i])) i--;  // the callee, if this is a call
+  } else if (isQuoteChar(text[i])) {
+    const q = text[i];
+    i--;
+    while (i >= 0 && text[i] !== q) i--;
+    i--;
+  } else {
+    while (i >= 0 && OPERAND_CHAR.test(text[i])) i--;
+  }
+  let start = i + 1;
+  // Unary signs bind tighter than `^` in Excel, so they belong to the base.
+  for (;;) {
+    let j = start - 1;
+    while (j >= 0 && text[j] === " ") j--;
+    if (j < 1 || (text[j] !== "-" && text[j] !== "+")) break;
+    let k = j - 1;
+    while (k >= 0 && text[k] === " ") k--;
+    if (k >= 0 && !PRECEDES_UNARY.test(text[k])) break;
+    start = j;
+  }
+  return start;
+};
+
+const operandEnd = (text: string, begin: number): number => {
+  let i = begin;
+  while (i < text.length && (text[i] === " " || text[i] === "-" || text[i] === "+")) i++;
+  if (isQuoteChar(text[i])) {
+    const q = text[i];
+    i++;
+    while (i < text.length && text[i] !== q) i++;
+    i++;
+  } else {
+    while (i < text.length && OPERAND_CHAR.test(text[i])) i++;
+    let j = i;
+    while (j < text.length && text[j] === " ") j++;
+    if (text[j] === "(") {
+      const close = matchParen(text, j);
+      i = close < 0 ? text.length : close + 1;
+    }
+  }
+  let j = i;
+  while (j < text.length && (text[j] === " " || text[j] === "%")) j++;
+  return text[j - 1] === "%" ? j : i;
+};
+
+/** The index of the first `^` outside quoted text, or -1. */
+const firstCaret = (text: string): number => {
+  let quote = "";
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quote) { if (c === quote) quote = ""; }
+    else if (isQuoteChar(c)) quote = c;
+    else if (c === "^") return i;
+  }
+  return -1;
+};
+
+const spellPower = (text: string): string => {
+  // Leftmost first, so the result becomes the base of the next `^`: left-associative.
+  for (let at = firstCaret(text); at > 0; at = firstCaret(text)) {
+    const start = operandStart(text, at - 1);
+    const end = operandEnd(text, at + 1);
+    const base = text.slice(start, at).trim();
+    const exponent = text.slice(at + 1, end).trim();
+    if (!base || !exponent) break;  // malformed; leave it for the parser to report
+    text = `${text.slice(0, start)}POWER(${base},${exponent})${text.slice(end)}`;
+  }
+  return text;
+};
+
+/**
+ * Upper-case a formula, drop `$` anchors (see stripAbsoluteReferences), spell `<>` as `!=` and
+ * `a^b` as `POWER(a,b)`, and bracket any function call that is an operand of `*` or `/`.
+ *
+ * THIS IS STILL NEEDED, and it is worth being clear why, because the rest of
+ * this file just got much smaller and it would be easy to assume this went too.
+ * The defect is in parselatex, not translatex: application by juxtaposition is
+ * assembled at the LOWEST multiplicative precedence, so every explicit
+ * multiplicative operator binds tighter and closes over the bare callee.
+ *
+ *     =A1/SUM(A1,A2)     the call is lost
+ *     =SUM(A1,A2)/A1     the argument list becomes the numerator, and it throws
+ *     =SUM(A1,A2)*A1     parses correctly
+ *
+ * parselatex 1.8.0 fixes this properly, with a real application production —
+ * but only for a caller that declares its function names as `{type:'function'}`
+ * in env, and translatex 0.25.0 does not. When it does, every case below
+ * becomes a test of the parser fix and this function can go.
+ *
+ * A redundant pair of brackets is the whole workaround: `=A1/(SUM(A1,A2))`
+ * evaluates correctly. Every call that is an operand of `*` or `/` is
+ * bracketed, rather than only the three of those four positions that are
+ * broken — `=SUM(A1,A2)*A1` already parses, and brackets leave it alone. The
+ * scan is left to right and bracketing does not skip the bracketed region, so a
+ * call nested inside another call is reached on the same pass.
+ */
 export const prepareFormula = (text: any): string => {
-  const upper = spellNotEqual(toUpperCase(stripAbsoluteReferences(text)));
+  const upper = spellPower(spellNotEqual(toUpperCase(stripAbsoluteReferences(text))));
   if (!upper || upper.indexOf("=") !== 0 || !/[*/]/.test(upper)) return upper;
 
   /** The next character that is not a space, from `i` on. */

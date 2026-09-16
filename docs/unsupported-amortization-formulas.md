@@ -167,8 +167,9 @@ fight the model's priors on every generation.
    cell, `"Yes"`/`"No"` come through IF, and `=W1="hello"` compares as text. A non-numeric
    literal used in arithmetic (`=A1+"x"`) is `#VALUE!`. With both fixes, the mortgage item
    recalculates with 0 errors, and a 15-year term blanks rows 29–43.
-3. `^`: make it exponentiation, equal to `POWER`. Silently dropping the exponent is the worst
-   current outcome.
+3. ~~`^`~~: **done** (uncommitted). `prepareFormula` spells `a^b` as `POWER(a,b)`, left-associative
+   with unary minus on the base, as in Excel (`2^3^2` = 64, `-2^2` = 4). The parser's own `^` is
+   a LaTeX superscript (`2^10` → 20), so a rule for it would have been wrong.
 4. Bare comparisons as a cell value (`=A14<=B4` → TRUE/FALSE).
 5. Functions: `MAX`, `MIN`, `ABS`, `EXP`, `LN`, and the financial set `PMT`, `IPMT`, `PPMT`,
    `FV`, `PV`, `NPER`, `RATE`, `CUMIPMT`, `CUMPRINC`.
