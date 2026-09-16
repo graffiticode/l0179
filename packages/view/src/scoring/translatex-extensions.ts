@@ -19,7 +19,7 @@
  */
 import { createSpreadsheet } from "@graffiticode/translatex/src/spreadsheet.js";
 
-import { toUpperCase } from "./normalize.js";
+import { toUpperCase, stripAbsoluteReferences } from "./normalize.js";
 
 /**
  * POWER(base, exponent), Excel's spelling of `base ^ exponent`.
@@ -60,6 +60,52 @@ export const evalRules = sheet.rules.evalRules;
 /** Detect a call that did not resolve. See prepareFormula for why one still can. */
 export const checkResult = (value: any) => sheet.checkResult(value);
 
+/**
+ * A formula's string literals, rebound as cells the parser can read.
+ *
+ * parselatex rejects `"` outright (1004), so `=IF(A1>B1,A1,"")`, the ordinary way to leave a cell
+ * blank, was #NAME!. Each literal becomes a synthetic reference (`Z900000000`, ...) bound in `env`
+ * to the literal's text, which IF passes through and `=`/`<>` compare as text.
+ *
+ * The empty string is bound to a sentinel instead, and `decode` swaps it back: translatex resolves
+ * a reference as `env[name].val || name`, so a reference whose value is "" evaluates to its own
+ * NAME.
+ *
+ * A non-numeric literal used as an arithmetic operand (`=A1+"x"`) sets `error`. The reducers skip
+ * a value that isn't a number, so it would otherwise evaluate silently to 10. Excel says #VALUE!.
+ *
+ * The row numbers are far past anything the compiler would author, so a synthetic name can't
+ * collide with a real cell. Excel's doubled quote (`"say ""hi"""`) is unescaped.
+ */
+const LITERAL_ROW = 900000000;
+const EMPTY = `${String.fromCharCode(3)}EMPTY${String.fromCharCode(3)}`;
+const ARITHMETIC = /[-+*/^%&]/;
+
+export const bindStringLiterals = (text: any) => {
+  const env: any = {};
+  let error: string | undefined;
+  let index = 0;
+  if (typeof text !== "string" || text.indexOf("\"") < 0) {
+    return { text, env, error, decode: (val: any) => val };
+  }
+  const bound = text.replace(/"((?:[^"]|"")*)"/g, (match: string, body: string, at: number) => {
+    const literal = body.replace(/""/g, "\"");
+    const before = text.slice(0, at).trimEnd().slice(-1);
+    const after = text.slice(at + match.length).trimStart().charAt(0);
+    const isOperand = ARITHMETIC.test(before) || ARITHMETIC.test(after);
+    if (isOperand && (literal.trim() === "" || isNaN(Number(literal)))) {
+      error ??= `Text used as a number: ${match}`;
+    }
+    const name = `Z${LITERAL_ROW + index++}`;
+    env[name] = { val: literal === "" ? EMPTY : literal, type: "text" };
+    return name;
+  });
+  const decode = (val: any) => (
+    typeof val === "string" && val.indexOf(EMPTY) >= 0 ? val.split(EMPTY).join("") : val
+  );
+  return { text: bound, env, error, decode };
+};
+
 /** The function names the rule set knows, upper-cased as a formula is when scanned. */
 const FN_NAMES = new Set<string>(evalRules.types.fn.map((n: string) => n.toUpperCase()));
 
@@ -80,7 +126,8 @@ const matchParen = (text: string, open: number): number => {
 };
 
 /**
- * Upper-case a formula and bracket any function call that is an operand of `*` or `/`.
+ * Upper-case a formula, drop `$` anchors (see stripAbsoluteReferences), spell `<>` as `!=`, and
+ * bracket any function call that is an operand of `*` or `/`.
  *
  * THIS IS STILL NEEDED, and it is worth being clear why, because the rest of
  * this file just got much smaller and it would be easy to assume this went too.
@@ -104,8 +151,34 @@ const matchParen = (text: string, open: number): number => {
  * scan is left to right and bracketing does not skip the bracketed region, so a
  * call nested inside another call is reached on the same pass.
  */
+/**
+ * Excel's not-equal, `<>`, spelled `!=` outside quoted text.
+ *
+ * The rule set has `?!=?` and nothing for `<>`, and parselatex has no `<>` token, so `A1<>A2` lexed
+ * as `<` then `>` and every `IF(x<>y, …)` took its true branch, equal or not.
+ */
+const spellNotEqual = (text: string): string => {
+  if (text.indexOf("<>") < 0) return text;
+  let out = "";
+  let quote = "";
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quote) {
+      if (c === quote) quote = "";
+    } else if (isQuoteChar(c)) {
+      quote = c;
+    } else if (c === "<" && text[i + 1] === ">") {
+      out += "!=";
+      i++;
+      continue;
+    }
+    out += c;
+  }
+  return out;
+};
+
 export const prepareFormula = (text: any): string => {
-  const upper = toUpperCase(text);
+  const upper = spellNotEqual(toUpperCase(stripAbsoluteReferences(text)));
   if (!upper || upper.indexOf("=") !== 0 || !/[*/]/.test(upper)) return upper;
 
   /** The next character that is not a space, from `i` on. */

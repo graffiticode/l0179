@@ -26,9 +26,10 @@
 import { TransLaTeX } from "@graffiticode/translatex";
 
 import { normalizeRules } from "./translatex-rules.js";
-import { evalRules, expanders, prepareFormula } from "./translatex-extensions.js";
+import { evalRules, expanders, prepareFormula, bindStringLiterals } from "./translatex-extensions.js";
 import {
   toUpperCase,
+  stripAbsoluteReferences,
   wrapPlainTextInLatex,
   normalizeNumberInput,
   normalizeDateInput,
@@ -88,7 +89,7 @@ const normalizeValue = (value: any, memo?: Map<string, any[]>): any[] => {
       ...normalizeRules,
     };
     if (text && text.length > 0) {
-      const processedText = text.indexOf("=") === 0 ? toUpperCase(text) : wrapPlainTextInLatex(text);
+      const processedText = text.indexOf("=") === 0 ? toUpperCase(stripAbsoluteReferences(text)) : wrapPlainTextInLatex(text);
       const translate = TransLaTeX.buildTranslator(options, expanders);
       translate(processedText, (err: any, val: any) => {
         if (err && err.length) {
@@ -153,17 +154,23 @@ export const evaluateExpectedFormula = (formula: any, interactionCells: any, ctx
     }
     if (ctx) ctx.env = env;
   }
+  // A literal's binding is per formula, so it goes on a copy — `env` is shared across the pass.
+  const literals = bindStringLiterals(formula);
+  if (literals.error) {
+    if (ctx) ctx.expected.set(formula, "#VALUE!");
+    return "#VALUE!";
+  }
   const options = {
     keepTextWhitespace: true,
-    env,
+    env: literals.text === formula ? env : { ...env, ...literals.env },
     ...evalRules,
   };
-  const processedText = prepareFormula(formula);
+  const processedText = prepareFormula(literals.text);
   const translate = TransLaTeX.buildTranslator(options, expanders);
   let result = formula;
   translate(processedText, (err: any, val: any) => {
     if (!err || !err.length) {
-      result = String(val);
+      result = String(literals.decode(val));
     }
   });
   if (ctx) ctx.expected.set(formula, result);

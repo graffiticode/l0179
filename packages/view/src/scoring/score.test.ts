@@ -71,6 +71,25 @@ describe("scoreCell", () => {
       .toEqual({ points: 1, isValid: true });
   });
 
+  test("an expected with absolute references and string literals is evaluated", () => {
+    const interactionCells = { A1: { text: "21" }, B4: { text: "30" } };
+    expect(scoreCell({ method: "value", expected: "=$A$1*2", points: 1 }, { val: "42", type: "number" }, interactionCells))
+      .toEqual({ points: 1, isValid: true });
+    expect(scoreCell({ method: "value", expected: '=IF(A1>$B$4,"over","under")', points: 1 }, { val: "under", type: "text" }, interactionCells))
+      .toEqual({ points: 1, isValid: true });
+  });
+
+  test("an expected using <> grades on the comparison, not always the true branch", () => {
+    const interactionCells = { A1: { text: "5" }, A2: { text: "5" } };
+    expect(scoreCell({ method: "value", expected: '=IF(A1<>A2,"diff","same")', points: 1 }, { val: "same", type: "text" }, interactionCells))
+      .toEqual({ points: 1, isValid: true });
+  });
+
+  test("formula method treats $B$4 and B4 as the same reference", () => {
+    const assess = { method: "formula", expected: "=SUM(A1:A3)*B4", points: 1 };
+    expect(scoreCell(assess, { formula: "=SUM($A$1:$A$3)*$B$4" })).toEqual({ points: 1, isValid: true });
+  });
+
   test("an expected written as a formula is evaluated against the authored grid", () => {
     // `expected "=A1*2"` must grade against whatever A1 holds this render.
     const assess = { method: "value", expected: "=A1*2", points: 1 };

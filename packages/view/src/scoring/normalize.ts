@@ -37,6 +37,38 @@ export const toUpperCase = (text: any): string => {
   }), { inString: false, text: "" }).text) || text;
 };
 
+/**
+ * Drop the `$` anchors from absolute references outside quoted text: `=$B$4*B$6+$C7` becomes
+ * `=B4*B6+C7`.
+ *
+ * Exact, not an approximation. `$` only changes what a reference becomes when a formula is copied
+ * or filled, and a sheet here is authored cell by cell and never filled, so an anchored reference
+ * always means the cell it names. It has to happen before anything reads references, because
+ * nothing downstream understands `$`: the undefined-name scan read `$B$6` as the name `B`
+ * (#NAME!), the dependency parser found no reference in it (so no recalculation), and the formula
+ * parser read `$B6` as literal text.
+ */
+export const stripAbsoluteReferences = (text: any): any => {
+  if (typeof text !== "string" || text.indexOf("$") < 0) return text;
+  let out = "";
+  let quote = "";
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quote) {
+      if (c === quote) quote = "";
+    } else if (isQuoteChar(c)) {
+      quote = c;
+    } else if (c === "$" && (
+      /^[A-Za-z]+\$?[0-9]/.test(text.slice(i + 1)) ||                           // $B$4, $B4
+      (/[A-Za-z]/.test(text[i - 1] || "") && /[0-9]/.test(text[i + 1] || ""))  // B$4
+    )) {
+      continue;
+    }
+    out += c;
+  }
+  return out;
+};
+
 export const isNumeric = (text: any): boolean => {
   if (!text || typeof text !== "string") return false;
   const trimmed = text.trim();

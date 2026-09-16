@@ -26,7 +26,7 @@
  * belongs with the structure it feeds. It stays the ONLY thing that derives an edge list — every
  * traversal below reads stored edges and never re-parses.
  */
-import { toUpperCase } from "../scoring/index.js";
+import { toUpperCase, stripAbsoluteReferences } from "../scoring/index.js";
 import { getCellRange } from "./address.js";
 
 /**
@@ -64,8 +64,9 @@ export const getSingleCellDependencies = ({ env, name }): string[] => {
   if (!text || text.indexOf("=") !== 0) return [];
 
   // Upper-case outside quoted strings, so `=sum(a1:a3)` resolves like `=SUM(A1:A3)`; then blank the
-  // quoted segments, because a cell name inside a string literal is text, not a reference.
-  const formula = toUpperCase(text)
+  // quoted segments, because a cell name inside a string literal is text, not a reference. `$B$4`
+  // is B4: without stripping the anchors the pattern below finds no reference in it at all.
+  const formula = toUpperCase(stripAbsoluteReferences(text))
     .replace(/"[^"]*"/g, '""')
     .replace(/'[^']*'/g, "''");
 
