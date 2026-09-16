@@ -136,6 +136,11 @@ describe("evalCell", () => {
       ["=IF(A1=11,100,200)", "200"],
       ["=IF(A1!=10,100,200)", "200"],
       ["=IF(A1!=11,100,200)", "100"],
+      // `<>` is Excel's spelling, and it lexed as `<` then `>`: always the true branch.
+      ["=IF(A1<>10,100,200)", "200"],
+      ["=IF(A1<>11,100,200)", "100"],
+      ["=IF(A1<>A2,100,200)", "100"],
+      ["=IF(A1 <> 10,100,200)", "200"],
       ["=IF(A1>A2,100,200)", "200"],
       ["=IF(A2>A1,100,200)", "100"],
     ])("%s evaluates to %s", (formula, expected) => {
@@ -148,15 +153,12 @@ describe("evalCell", () => {
   });
 
   describe("#NAME! detection does not read inside string literals", () => {
-    test("a formula with strings reports the real error, not invented names", () => {
-      // It used to scan the raw text, so the words INSIDE a string were called
-      // undefined names — and that masked the genuine parse error underneath.
-      // Strings are not supported yet (they need parselatex 1.8.0 and an
-      // option translatex does not pass), so the honest answer is the parser's.
+    test("the words inside a string are not called undefined names", () => {
+      // It used to scan the raw text, so `=IF(A1,"Yes","No")` reported
+      // `Undefined names: Yes, No`.
       const r = evalIn(base(), '=IF(A1,"Yes","No")');
-      expect(r.val).toBe("#NAME!");
-      expect(r.error).not.toContain("Yes");
-      expect(r.error).toMatch(/Invalid character/);
+      expect(r.val).toBe("Yes");
+      expect(r.type).toBe("text");
     });
 
     test("a genuinely unknown function is still caught", () => {
@@ -170,9 +172,65 @@ describe("evalCell", () => {
     // The callback used to log the error and fall through to `val`, which is ""
     // on the error path — so an unparseable formula produced an EMPTY cell with
     // no indication anything was wrong.
-    const r = evalIn(base(), '=A1+"x"');
+    const r = evalIn(base(), "=A1<=A2");
     expect(r.val).not.toBe("");
     expect(r.type).toBe("error");
+  });
+
+  describe("absolute references", () => {
+    // A sheet is authored cell by cell and never filled, so `$B$4` always means B4. Before this,
+    // the name scan read `$B$6` as the undefined name `B`, and `$B6` evaluated to the text "$B6".
+    const refs = () => sheet({ A1: leaf("10"), B4: leaf("30"), B6: leaf("320000") });
+
+    test.each([
+      ["=$B$6", "320000"],
+      ["=B$6", "320000"],
+      ["=$B6", "320000"],
+      ["=12*$B$4", "360"],
+      ["=SUM($A$1,B$4)", "40"],
+      ["=IF(A1<=$B$4,$B$6,0)", "320000"],
+      ["=$b$6", "320000"],
+    ])("%s evaluates to %s", (formula, expected) => {
+      expect(evalIn(refs(), formula).val).toBe(expected);
+    });
+
+    test("a $ inside a string literal is text", () => {
+      expect(evalIn(refs(), '="$B$6"').val).toBe("$B$6");
+    });
+  });
+
+  describe("string literals", () => {
+    // The parser rejects `"`, so each literal is bound to a synthetic reference first.
+    const strs = () => sheet({ A1: leaf("10"), A2: leaf("20"), W1: { text: "hello", formula: "hello", val: "hello", type: "text" } });
+
+    test.each([
+      ['=IF(A1>A2,5,"")', "", "text"],
+      ['=IF(A1<A2,5,"")', "5", "number"],
+      ['=IF(A1>A2,"",A2-A1)', "10", "number"],
+      ['=IF(A1<A2,"Yes","No")', "Yes", "text"],
+      ['=IF(A1>A2,"Yes","No")', "No", "text"],
+      ['=IF(W1="hello",1,0)', "1", "number"],
+      ['=IF(W1="bye",1,0)', "0", "number"],
+      ['=IF(W1<>"hello",1,0)', "0", "number"],
+      ['=IF(W1<>"bye",1,0)', "1", "number"],
+      ['="a<>b"', "a<>b", "text"],
+      ['=""', "", "text"],
+      ['="abc"', "abc", "text"],
+      ['="say ""hi"""', 'say "hi"', "text"],
+      ['=IF(A1,"B1","C1")', "B1", "text"],
+      ['=A1+"5"', "15", "number"],
+    ])("%s evaluates to %j", (formula, val, type) => {
+      const r = evalIn(strs(), formula);
+      expect(r.val).toBe(val);
+      expect(r.type).toBe(type);
+    });
+
+    test.each(['=A1+"x"', '="x"*2', '=A1-""'])("%s is #VALUE!, not a silently dropped operand", (formula) => {
+      // The reducers skip a value that isn't a number, so `=A1+"x"` would otherwise be 10.
+      const r = evalIn(strs(), formula);
+      expect(r.val).toBe("#VALUE!");
+      expect(r.type).toBe("error");
+    });
   });
 
   test("a circular reference is #CYCLE! and reports the path", () => {
@@ -340,6 +398,12 @@ describe("getSingleCellDependencies", () => {
 
   test("a repeated reference is listed once", () => {
     expect(depsOf("=A1+A1+A2")).toEqual(["A1", "A2"]);
+  });
+
+  test("an absolute reference is a reference", () => {
+    // CELL_REF found nothing in `$B$6`, so the cell was never recalculated when B6 changed.
+    expect(depsOf("=$A$1+A$2+$A3")).toEqual(["A1", "A2", "A3"]);
+    expect(depsOf("=SUM($A$1:$A$3)")).toEqual(["A1", "A2", "A3"]);
   });
 
   test("a cell name inside a string literal is text, not a reference", () => {

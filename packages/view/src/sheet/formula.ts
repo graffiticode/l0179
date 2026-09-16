@@ -18,9 +18,10 @@
 import { TransLaTeX } from "@graffiticode/translatex";
 
 import { formatRules } from "../scoring/translatex-rules.js";
-import { evalRules, expanders, prepareFormula } from "../scoring/translatex-extensions.js";
+import { evalRules, expanders, prepareFormula, bindStringLiterals } from "../scoring/translatex-extensions.js";
 import { spreadsheetErrorMarker } from "@graffiticode/translatex/src/spreadsheet.js";
 import {
+  stripAbsoluteReferences,
   isNumeric,
   wrapPlainTextInLatex,
   normalizeNumberInput,
@@ -62,10 +63,12 @@ export const evalCell = ({ env, name, graph, cache }: any): CellValue => {
     // Blank the quoted segments first. WITHOUT THIS the scan reads inside
     // string literals and calls their words undefined names, so
     // `=IF(A1,"Yes","No")` reported `Undefined names: Yes, No` — and worse, it
-    // MASKED the real error: the parser rejects a double quote outright with a
+    // MASKED the real error: the parser rejected a double quote outright with a
     // clean 1004, and this returned a wrong #NAME! before that could surface.
+    // (Literals are now bound before parsing — see bindStringLiterals.)
     // Same treatment sheet/graph.ts already gives dependency extraction.
-    const scannable = text
+    // `$B$6` is B6; unstripped, the scan reads the bare `B` as an undefined name.
+    const scannable = stripAbsoluteReferences(text)
       .replace(/"[^"]*"/g, '""')
       .replace(/'[^']*'/g, "''");
     let match;
@@ -151,13 +154,20 @@ export const evalCell = ({ env, name, graph, cache }: any): CellValue => {
       const hit = cache && cacheGet(cache, key);
       if (hit) return hit;
 
+      // String literals become synthetic references the parser can read; see bindStringLiterals.
+      const literals = bindStringLiterals(text);
+      if (literals.error) {
+        result = { ...result, val: "#VALUE!", type: 'error', error: literals.error } as any;
+        return cache ? cacheSet(cache, key, result) : result;
+      }
+      Object.assign(narrowEnv, literals.env);
       const options = {
         // allowThousandsSeparator: true,
         keepTextWhitespace: true,
         env: narrowEnv,
         ...evalRules,
       };
-      const processedText = prepareFormula(text);
+      const processedText = prepareFormula(literals.text);
       const translate = TransLaTeX.buildTranslator(options, expanders);
       translate(processedText, (err, val) => {
         if (err && err.length) {
@@ -185,6 +195,7 @@ export const evalCell = ({ env, name, graph, cache }: any): CellValue => {
           } as any;
           return;
         }
+        val = literals.decode(val);
         // Store val as string but set appropriate type
         // Check if it's a date format first
         if (isDateFormat(format) && isNumeric(String(val))) {

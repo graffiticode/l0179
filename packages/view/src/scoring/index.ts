@@ -5,6 +5,7 @@ export { scoreCells, getCellsValidation, scoreCell, evaluateExpectedFormula } fr
 export { splitKey, qualifyKey, qualify, splitBySheet, responseOverlay } from "./sheets.js";
 export {
   toUpperCase,
+  stripAbsoluteReferences,
   isNumeric,
   isDateLike,
   wrapPlainTextInLatex,
