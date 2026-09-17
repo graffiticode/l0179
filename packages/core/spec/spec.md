@@ -176,7 +176,10 @@ Available inside a `text` or `expected` value that begins with `=`.
 | `SUM` | `=SUM(A1:A10)` | Adds numeric values in a range. |
 | `AVERAGE` | `=AVERAGE(A1:A10)` | Arithmetic mean. |
 | `ROUND` | `=ROUND(A1,2)` | Rounds to a number of decimal places. |
-| `POWER` | `=POWER(A1,2)` | Raises a base to an exponent. |
+| `POWER` | `=POWER(A1,2)` | Raises a base to an exponent. Also written `=A1^2`. |
+| `MAX` | `=MAX(A1:A10)` | Largest numeric value; text and blanks are skipped. |
+| `MIN` | `=MIN(A1:A10)` | Smallest numeric value; text and blanks are skipped. |
+| `ABS` | `=ABS(A1)` | Absolute value. |
 | `IF` | `=IF(A1,B1,C1)` | Conditional value. |
 
 ## Examples

@@ -43,6 +43,9 @@ export interface CellValue {
   error?: string;
 }
 
+/** A spreadsheet error value, as a function returns it. */
+const ERROR_MARKER = /^#(VALUE!|NUM!|DIV\/0!|NAME\?|NAME!|REF!|N\/A|NULL!)$/;
+
 export const evalCell = ({ env, name, graph, cache }: any): CellValue => {
   const cell = env.cells[name];
   const text = cell?.text || "";
@@ -196,6 +199,11 @@ export const evalCell = ({ env, name, graph, cache }: any): CellValue => {
           return;
         }
         val = literals.decode(val);
+        // A function that reports an error returns its marker (POWER's #NUM!, ABS's #VALUE!).
+        if (typeof val === "string" && ERROR_MARKER.test(val)) {
+          result = { ...result, val, type: 'error', error: `${val} returned by the formula` } as any;
+          return;
+        }
         // Store val as string but set appropriate type
         // Check if it's a date format first
         if (isDateFormat(format) && isNumeric(String(val))) {

@@ -82,8 +82,61 @@ describe("evalCell", () => {
       expect(evalIn(rates(), "=POWER(A1,A2)").type).toBe("number");
     });
 
-    test("a missing argument is #NUM! rather than a thrown error", () => {
+    test("a missing argument is a #NUM! error rather than a thrown one", () => {
       expect(evalIn(rates(), "=POWER(A1)").val).toBe("#NUM!");
+      expect(evalIn(rates(), "=POWER(A1)").type).toBe("error");
+    });
+  });
+
+  describe("MAX, MIN, ABS", () => {
+    const vals = () => sheet({
+      A1: leaf("10"), A2: leaf("-20"), A3: leaf("5"), F43: leaf("-2.57"),
+      W1: { text: "hello", formula: "hello", val: "hello", type: "text" },
+    });
+
+    test.each([
+      ["=MAX(A1:A3)", "10"],
+      ["=MIN(A1:A3)", "-20"],
+      ["=MAX(A1,A2,A3)", "10"],
+      ["=MIN(A1,7)", "7"],
+      ["=MAX(0,F43)", "0"],
+      ["=MAX(1.5,1.25)", "1.5"],
+      ["=MAX(W1,A2)", "-20"],        // text is skipped
+      ["=MIN(A4:A6)", "0"],          // no numbers at all
+      ["=max($a$1:$a$3)", "10"],
+      ["=ABS(A2)", "20"],
+      ["=ABS(-3.5)", "3.5"],
+      ["=ABS(A1-A3*4)", "10"],
+      ["=A1/MAX(A3,1)", "2"],
+      ["=MAX(A1,A3)^2", "100"],
+      ["=MIN(POWER(2,3),ABS(A2))", "8"],
+    ])("%s evaluates to %s", (formula, expected) => {
+      expect(evalIn(vals(), formula).val).toBe(expected);
+    });
+
+    test("ABS of text is a #VALUE! error", () => {
+      const r = evalIn(vals(), "=ABS(W1)");
+      expect(r.val).toBe("#VALUE!");
+      expect(r.type).toBe("error");
+    });
+  });
+
+  describe("a sign before a function call", () => {
+    // The same parser defect as `*` and `/`: `=-SUM(A1,A2)` was the text "0A1…A2" and
+    // `=A1+-SUM(A1,A2)` dropped the call. Bracketed in prepareFormula.
+    const vals = () => sheet({ A1: leaf("10"), A2: leaf("-20"), A3: leaf("5") });
+
+    test.each([
+      ["=-SUM(A1,A3)", "-15"],
+      ["=-POWER(2,3)", "-8"],
+      ["=-ABS(A2)", "-20"],
+      ["=+ABS(A2)", "20"],
+      ["=A1+-SUM(A1,A3)", "-5"],
+      ["=1-SUM(A1,A3)", "-14"],
+      ["=-MAX(A1:A3)+1", "-9"],
+      ["=A1-ABS(A2)*2", "-30"],
+    ])("%s evaluates to %s", (formula, expected) => {
+      expect(evalIn(vals(), formula).val).toBe(expected);
     });
   });
 

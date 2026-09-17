@@ -49,7 +49,40 @@ const POWER = {
   },
 };
 
-const sheet = createSpreadsheet({ functions: [POWER] });
+/**
+ * MAX and MIN over any mix of values and ranges.
+ *
+ * Arguments that aren't numbers are skipped, as Excel skips text and blanks in a range and as SUM
+ * already does here. With no numbers at all the result is 0, which is Excel's answer too.
+ */
+const extremum = (name: string, pick: "max" | "min") => ({
+  name,
+  minArgs: 1,
+  maxArgs: Infinity,
+  apply: ({ args, helpers }: any) => {
+    const numbers = args
+      .map((a: string) => helpers.getCellValue(a))
+      .filter((v: any) => helpers.isValidDecimal(v))
+      .map((v: any) => new helpers.Decimal(v));
+    return numbers.length ? `${helpers.Decimal[pick](...numbers)}` : "0";
+  },
+});
+
+const MAX = extremum("MAX", "max");
+const MIN = extremum("MIN", "min");
+
+/** ABS(number). An argument that is not a number is #VALUE!, as in Excel. */
+const ABS = {
+  name: "ABS",
+  minArgs: 1,
+  maxArgs: 1,
+  apply: ({ args, helpers }: any) => {
+    const value = helpers.getCellValue(args[0]);
+    return helpers.isValidDecimal(value) ? `${new helpers.Decimal(value).abs()}` : "#VALUE!";
+  },
+};
+
+const sheet = createSpreadsheet({ functions: [POWER, MAX, MIN, ABS] });
 
 /** translatex's expanders plus L0179's functions. */
 export const expanders = sheet.expanders;
@@ -276,7 +309,7 @@ const spellPower = (text: string): string => {
  */
 export const prepareFormula = (text: any): string => {
   const upper = spellPower(spellNotEqual(toUpperCase(stripAbsoluteReferences(text))));
-  if (!upper || upper.indexOf("=") !== 0 || !/[*/]/.test(upper)) return upper;
+  if (!upper || upper.indexOf("=") !== 0 || !/[*/+-]/.test(upper)) return upper;
 
   /** The next character that is not a space, from `i` on. */
   const significantAt = (i: number) => {
@@ -284,6 +317,9 @@ export const prepareFormula = (text: any): string => {
     return upper[i] || "";
   };
   const isMulDiv = (c: string) => c === "*" || c === "/";
+  // A sign before a call breaks the same way: `=-SUM(A1,A2)` was the text "0A1…A2", and
+  // `=A1+-SUM(A1,A2)` dropped the call. After a binary `+`/`-` the brackets are redundant.
+  const isSign = (c: string) => c === "+" || c === "-";
 
   // index of a `)` -> how many extra `)` to emit after it.
   const extraClose = new Map<number, number>();
@@ -303,7 +339,7 @@ export const prepareFormula = (text: any): string => {
       while (open < upper.length && upper[open] === " ") open++;
       if (upper[open] === "(" && FN_NAMES.has(upper.slice(i, j))) {
         const end = matchParen(upper, open);
-        if (end >= 0 && (isMulDiv(prev) || isMulDiv(significantAt(end + 1)))) {
+        if (end >= 0 && (isMulDiv(prev) || isSign(prev) || isMulDiv(significantAt(end + 1)))) {
           out += "(";
           extraClose.set(end, (extraClose.get(end) || 0) + 1);
         }

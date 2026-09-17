@@ -171,7 +171,7 @@ fight the model's priors on every generation.
    with unary minus on the base, as in Excel (`2^3^2` = 64, `-2^2` = 4). The parser's own `^` is
    a LaTeX superscript (`2^10` → 20), so a rule for it would have been wrong.
 4. Bare comparisons as a cell value (`=A14<=B4` → TRUE/FALSE).
-5. Functions: `MAX`, `MIN`, `ABS`, `EXP`, `LN`, and the financial set `PMT`, `IPMT`, `PPMT`,
+5. Functions: ~~`MAX`, `MIN`, `ABS`~~ **done** (uncommitted); still missing `EXP`, `LN`, and the financial set `PMT`, `IPMT`, `PPMT`,
    `FV`, `PV`, `NPER`, `RATE`, `CUMIPMT`, `CUMPRINC`.
 6. Propagate errors, and treat blank as 0 in arithmetic.
 7. ~~`<>` is always true~~: **done** (uncommitted). `prepareFormula` spells it `!=` outside
