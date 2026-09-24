@@ -11,14 +11,14 @@
 // external load. L0166 gets this for free by keeping state outside React; see view.tsx.
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { View, Form, reduce } from "../src";
+import { View, Form, reduce, score } from "../src";
 import "../src/index.css";
 
 const el = document.getElementById("root");
 if (el) {
   createRoot(el).render(
     <React.StrictMode>
-      <View Form={Form} reduce={reduce} formModel="loaded" />
+      <View Form={Form} reduce={reduce} formModel="loaded" score={score} />
     </React.StrictMode>,
   );
 }

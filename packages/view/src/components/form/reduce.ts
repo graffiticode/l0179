@@ -41,6 +41,15 @@ const mergeCells = (into: any, reported: any) => {
 };
 
 export const reduce: LanguageReducer = (data: any, { type, args }: StateAction) => {
+  // A `response` is the learner's answers, flat and sheet-qualified (`s2!A1`), and each one
+  // carries only the sheet it came from. The shared View would REPLACE the top-level `cells` with
+  // it, so with several sheets every answer but the last-edited sheet's was lost — and those are
+  // what the Check button scores (../../scoring/total.ts). Merged per key, as learnosity-cqt's
+  // reducer does. With one sheet a response always carries every assessed cell, so this is the
+  // same map the replacement produced.
+  if (type === "response" && args?.cells && data && typeof data === "object") {
+    return { ...data, ...args, cells: { ...(data.cells || {}), ...args.cells } };
+  }
   // Only an `update` carrying cells is ours; anything else falls through to the shared View.
   if (type !== "update" || !args?.cells || !data?.interaction) return undefined;
 

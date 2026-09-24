@@ -5,6 +5,11 @@
   "description": "An authoring language for interactive spreadsheets, with spreadsheet-based assessment as a primary use case.",
   "type": "object",
   "properties": {
+    "feedback": {
+      "type": "string",
+      "enum": ["instant", "check"],
+      "description": "When assess feedback shows: \"instant\" colours cells as the learner answers; \"check\" (the default, and what absent means) waits for a check -- the host's Check button, or Learnosity's Check Answer. Written in source as `instant-feedback true|false`."
+    },
     "interaction": {
       "type": "object",
       "description": "The interaction configuration for the spreadsheet",

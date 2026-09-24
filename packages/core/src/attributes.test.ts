@@ -190,6 +190,34 @@ test("show-sheet-tabs and hide-sheet-menu reach interaction, and only when writt
   expect(out.interaction.hideSheetMenu).toBe(false);
 });
 
+// ── instant-feedback ───────────────────────────────────────────────────────
+
+const oneAssessed = (tail = "") =>
+  `sheets [ sheet "s1" [ cells [ cell A1 [text "" assess [method "value" expected "4"]] ] {} ] ] ${tail} {}..`;
+
+test("instant-feedback compiles to a top-level `feedback` mode, never `instantFeedback`", async () => {
+  const on = await compileSrc(oneAssessed("instant-feedback true"));
+  expect(on.feedback).toBe("instant");
+  expect(on).not.toHaveProperty("instantFeedback");
+  const off = await compileSrc(oneAssessed("instant-feedback false"));
+  expect(off.feedback).toBe("check");
+});
+
+test("without instant-feedback there is no `feedback` key — the default is on check", async () => {
+  const out = await compileSrc(oneAssessed());
+  expect(out).not.toHaveProperty("feedback");
+});
+
+test("instant-feedback takes a boolean", async () => {
+  await expectError(oneAssessed('instant-feedback "yes"'), "instant-feedback");
+});
+
+test("instant-feedback inside a sheet is refused and pointed at the program level", async () => {
+  await expectError(
+    'sheets [ sheet "s1" [ instant-feedback true cells [ cell A1 [text "a"] ] {} ] ] {}..',
+    "instant-feedback");
+});
+
 test("hiding both the menu and the tabs with several sheets is refused as unreachable", async () => {
   await expectError(twoSheets("", "", "show-sheet-tabs false hide-sheet-menu true"),
     "leaves no way to reach sheets beyond the first");

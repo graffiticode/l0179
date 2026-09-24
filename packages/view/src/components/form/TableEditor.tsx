@@ -280,10 +280,30 @@ const skipHeadersGoToNextCell = dir => (state, dispatch) => {
 };
 
 
+/**
+ * Which assess feedback is showing: `"checked"` after a check (the host's Check button, or
+ * Learnosity's Check Answer, both of which set `showValidationUI`), `"instant"` all the time when
+ * the program asked for `instant-feedback true`, and `false` otherwise — the grid gives nothing
+ * away while the learner works. Instant feedback judges only what the learner has entered; a
+ * check also marks the empty assessed cells wrong. L0183 draws the same line.
+ */
+export const showsFeedback = (data: any): "checked" | "instant" | false =>
+  data?.showValidationUI === true ? "checked" : data?.feedback === "instant" ? "instant" : false;
+
+const isAnswered = (cell: any): boolean => String(cell?.text ?? "").trim() !== "";
+
 const applyModelRules = (cellExprs, state, value, validation, formState) => {
   const cells = getCells(cellExprs, state);
   const interactionCells = formState?.data?.interaction?.cells;
-  const scoredCells = scoreCells({ cells: value.cells, validation, interactionCells });
+  // Not scored at all while feedback is hidden, so no cell can pick up a colour from it.
+  let scoredCells = value.showFeedback
+    ? scoreCells({ cells: value.cells, validation, interactionCells })
+    : {};
+  if (value.showFeedback === "instant") {
+    scoredCells = Object.fromEntries(
+      Object.entries(scoredCells).filter(([name]) => isAnswered(value.cells[name])),
+    );
+  }
   const { doc, selection } = state;
   const { lastFocusedCell } = value;
   const focus = formState?.data?.focus;
@@ -1772,6 +1792,10 @@ const buildCellPlugin = formState => {
           cells: allCells,
           graph,
           cache,
+          // Seeded from the model this editor state was built from; afterwards it moves only by
+          // the "feedback" meta TableEditor dispatches, because `formState` here is the one this
+          // plugin was built with and never sees a later check.
+          showFeedback: showsFeedback(formState.data),
         };
         const validation = formState.data?.validation || null;
         const decorations = applyModelRules(cellExprs, state, value, validation, formState);
@@ -1784,6 +1808,10 @@ const buildCellPlugin = formState => {
         // What the decorations were computed from on the way in, so the tail can tell whether
         // anything they depend on actually moved.
         const before = value;
+        const feedback = tr.getMeta("feedback");
+        if (feedback !== undefined && feedback !== value.showFeedback) {
+          value = { ...value, showFeedback: feedback };
+        }
         if (tr.getMeta("updated")) {
           value = {
             ...value,
@@ -1929,6 +1957,7 @@ const buildCellPlugin = formState => {
         const stale = tr.docChanged
           || tr.selectionSet
           || value.cells !== before.cells
+          || value.showFeedback !== before.showFeedback
           || value.focusedCell !== before.focusedCell
           || value.lastFocusedCell !== before.lastFocusedCell
           || !before.decorations;
@@ -2433,6 +2462,15 @@ export const TableEditor = ({ state, onEditorViewChange = undefined }: any) => {
       }
     };
   }, []);
+  // Feedback visibility reaches the plugins only this way: they hold the `state` they were built
+  // with. A check lays `showValidationUI` over the model without touching `interaction.cells`, so
+  // it re-renders this without re-seeding the document (which would throw the caret to A1).
+  const showFeedback = showsFeedback(state.data);
+  useEffect(() => {
+    if (!editorView) return;
+    editorView.dispatch(
+      editorView.state.tr.setMeta("feedback", showFeedback).setMeta("addToHistory", false));
+  }, [editorView, showFeedback]);
   // const templateVariablesRecords = state.data.templateVariablesRecords || [];
   // const index = Math.floor(Math.random() * templateVariablesRecords.length);
   // const env = templateVariablesRecords[index];

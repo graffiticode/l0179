@@ -199,6 +199,25 @@ cell B2 [text "" assess [method "value" expected "836"]]
 Each assessed cell is scored independently and the results are summed, so partial credit is the
 default behaviour rather than something to switch on.
 
+Feedback waits for a check by default: no cell turns right or wrong until the learner presses
+Check (or Learnosity's Check Answer). To colour each assessed cell as the learner answers it,
+write `instant-feedback true` after the `]` of `sheets`:
+
+```
+sheets [
+  sheet "s1" [
+    cells [
+      cell A1 [text "2 + 2"]
+      cell B1 [text "" assess [method "value" expected "4"]]
+    ] {}
+  ]
+] instant-feedback true {
+  "v": "0.0.1"
+}..
+```
+
+Use it only when the request asks for immediate or live feedback; leave it out otherwise.
+
 ## Parameterized sheets
 
 `params` supplies values that vary per render, and goes after the `sheets` list:

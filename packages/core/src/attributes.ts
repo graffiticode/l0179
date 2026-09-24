@@ -193,6 +193,17 @@ export const attributeFields: Record<string, AttributeMeta> = {
   INSTRUCTIONS: { field: "instructions", chaining: true },
   SHOW_SHEET_TABS: { field: "showSheetTabs", expects: "boolean", chaining: true },
   HIDE_SHEET_MENU: { field: "hideSheetMenu", expects: "boolean", chaining: true },
+  // Whether assess feedback colours the grid as the learner types, or waits for a check (the
+  // host's Check button, or Learnosity's Check Answer). Emitted as top-level `feedback`, a mode
+  // (`"instant"` or `"check"`) rather than a boolean; absent means the default, on check.
+  // NOT `instantFeedback`: learnosity-cqt keeps Learnosity's own instant_feedback under that key
+  // and spreads the compiled model over it, so the program's value would silently replace it.
+  INSTANT_FEEDBACK: {
+    field: "feedback",
+    expects: "boolean",
+    coerce: (v) => (v ? "instant" : "check"),
+    chaining: true,
+  },
 };
 
 /**
@@ -223,7 +234,9 @@ export const validAttributes: Record<string, string[]> = {
   // program carries as `{"v": "0.0.1"}`, which PROG destructures away and never emits. It has to
   // be listed, because this map is what turns validation ON for a container: before there was a
   // SHEETS entry, `assertKnownAttributes` returned early and the whole slot went unchecked.
-  SHEETS: ["title", "instructions", "show-sheet-tabs", "hide-sheet-menu", "params", "v"],
+  SHEETS: [
+    "title", "instructions", "show-sheet-tabs", "hide-sheet-menu", "instant-feedback", "params", "v",
+  ],
   SHEET: ["name", "hide-formulabar", "columns", "rows", "cells"],
   CELL: [
     "text", "assess", "width", "align", "background-color", "font-weight", "font-size",

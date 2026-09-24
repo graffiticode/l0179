@@ -33,7 +33,7 @@ sheets [
 
 `title` sits after the `]`, not inside the sheet, because it names the **program** — with two
 sheets, a title written inside one of them has no meaning. The same goes for `instructions`,
-`show-sheet-tabs`, and `hide-sheet-menu`.
+`show-sheet-tabs`, `hide-sheet-menu`, and `instant-feedback`.
 
 | Word | Form | Description |
 | :--- | :--- | :---------- |
@@ -96,6 +96,7 @@ Written inside a `[...]` list as a word applied to a value. Order does not matte
 | `hide-formulabar` | sheet | Hides the `fx` input above the grid. |
 | `title`, `instructions` | **program** | Text shown above the grid. Written after the `sheets` list, not inside a sheet. |
 | `show-sheet-tabs`, `hide-sheet-menu` | **program** | See [Several sheets](#sec-Several-sheets). Written after the `sheets` list. |
+| `instant-feedback` | **program** | Colour assessed cells as the learner answers, not only on a check. See [assess](#sec-assess). Written after the `sheets` list. |
 
 An attribute a container does not accept is a compile error naming what that container takes.
 
@@ -130,6 +131,27 @@ cell B2 [text "" assess [method "value" expected "836" points 2]]
 
 Points precedence is cell, then row, then column. Every assessed cell is scored independently
 and the results summed, so partial credit is the default rather than a mode.
+
+By default the grid shows no right-or-wrong colouring while the learner works: feedback waits for
+a check — the Check button under the form, or Learnosity's Check Answer. `instant-feedback`,
+written after the `sheets` list, changes that:
+
+| Word | Value | Effect |
+| :--- | :--- | :----- |
+| `instant-feedback` | boolean | `true` colours each assessed cell as the learner answers it. `false` is the default. |
+
+```
+sheets [
+  sheet "s1" [
+    cells [
+      cell A1 [text "2 + 2"]
+      cell B1 [text "" assess [method "value" expected "4"]]
+    ] {}
+  ]
+] instant-feedback true {
+  "v": "0.0.1"
+}..
+```
 
 ### params
 

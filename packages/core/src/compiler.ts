@@ -86,8 +86,8 @@ export class Transformer extends BaseTransformer {
   /**
    * `sheets [ sheet "id" [...] ] title "..." {config}` — a member list: children plus a
    * configuration slot. That slot holds the program-level chaining attributes (`title`,
-   * `instructions`, `show-sheet-tabs`, `hide-sheet-menu`) and `params`, all of which evaluate to one
-   * merged record.
+   * `instructions`, `show-sheet-tabs`, `hide-sheet-menu`, `instant-feedback`) and `params`, all of
+   * which evaluate to one merged record.
    *
    * The `sheets` ARRAY is emitted only when it carries something the flat fields cannot: more
    * than one sheet, or a `name` the sheet menu needs to display. A lone unnamed sheet compiles
@@ -370,6 +370,7 @@ Transformer.prototype.PROG = function (node: any, options: any, resume: any) {
       hideMenu,
       showSheetTabs,
       hideSheetMenu,
+      feedback,
       sheetIds,
       errors,
     } = val0;
@@ -408,6 +409,8 @@ Transformer.prototype.PROG = function (node: any, options: any, resume: any) {
     const val = {
       title: title || "",
       instructions: instructions || "",
+      // Only when written, so a program without `instant-feedback` compiles byte-identically.
+      ...(feedback !== undefined ? { feedback } : {}),
       templateVariablesRecords,
       validation: {
         ...getValidation(val0),

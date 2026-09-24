@@ -22,6 +22,8 @@ For an assessed cell, state the expected answer and whether it is a literal valu
 a formula expectation is re-evaluated against the current cell values at scoring time, which is
 what lets one item generate many variants. Say what each correct cell is worth only if it is not
 worth one point — per-cell scoring is the default, so partial credit needs no special request.
+Feedback waits for the learner to check their answers unless you ask for it to be instant, in
+which case each assessed cell turns right or wrong as it is answered.
 
 For values that change per render, describe them as parameters: a list of choices, or a numeric
 range with a step. Each rendered instance draws one combination, and an assessed cell whose
@@ -40,6 +42,7 @@ that item is that dialect's job, not this one's.
 - Describe the grid top-to-bottom and left-to-right; the backend places cells by address.
 - Give formulas verbatim, including the `=`.
 - For an assessed cell, say what the learner should enter and how it is checked.
+- Say so if feedback should be instant (shown as the learner answers) rather than on a check.
 - For a parameterized sheet, name the parameter cells and their ranges or choice lists.
 - Mention formatting where it carries meaning (a bold header row, a currency column).
 

@@ -25,7 +25,6 @@ describe("single sheet", () => {
 
   test("does not claim actions that are not ours", () => {
     expect(reduce(data, { type: "compiled", args: { title: "x" } })).toBeUndefined();
-    expect(reduce(data, { type: "response", args: { cells: {} } })).toBeUndefined();
     expect(reduce(data, update({ nope: 1 }))).toBeUndefined();
   });
 });
@@ -67,5 +66,23 @@ describe("several sheets", () => {
     const next: any = reduce(data, update({ cells: { A1: { text: "edited" } } }));
     expect(next.interaction.cells.A1.text).toBe("edited");
     expect(next.interaction.sheets[0].cells.A1.text).toBe("one");
+  });
+});
+
+describe("responses", () => {
+  const response = (cells: any) => ({ type: "response", args: { cells } });
+
+  test("accumulate per key, so a second sheet's answers do not erase the first's", () => {
+    // The shared View replaced top-level `cells` wholesale; the Check score reads this map.
+    let data: any = { interaction: { type: "table", cells: {} } };
+    data = reduce(data, response({ "s1!A1": { text: "4", val: "4" } }));
+    data = reduce(data, response({ "s2!B2": { text: "9", val: "9" } }));
+    expect(Object.keys(data.cells).sort()).toEqual(["s1!A1", "s2!B2"]);
+  });
+
+  test("a later answer to the same cell replaces the earlier one", () => {
+    let data: any = { cells: { A1: { text: "3", val: "3" } } };
+    data = reduce(data, response({ A1: { text: "4", val: "4" } }));
+    expect(data.cells.A1.val).toBe("4");
   });
 });
