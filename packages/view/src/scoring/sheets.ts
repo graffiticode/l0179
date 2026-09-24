@@ -80,3 +80,16 @@ export function splitBySheet(
   }
   return out;
 }
+
+/**
+ * One sheet's answer key, for a grid that renders that sheet alone.
+ *
+ * A multi-sheet `validation` carries each sheet's key under `sheets[id]`, and `scoreCells` given
+ * the whole of it expects sheet-qualified cells and returns sheet-qualified scores. A sheet's grid
+ * holds bare `A1` cells and looks scores up by bare name, so handed the whole key it found none
+ * and never coloured a cell — instant feedback or after a check. Its own key keeps the grid on
+ * the single-sheet path, where bare cells and bare scores line up. One sheet: unchanged.
+ */
+export function sheetValidation(validation: any, sheetId: string): any {
+  return validation?.sheets?.[sheetId] ?? validation;
+}

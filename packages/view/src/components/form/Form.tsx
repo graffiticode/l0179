@@ -32,7 +32,7 @@ import ReactMarkdown from "react-markdown";
 
 import { Editor } from "./Editor";
 import { SheetChrome } from "./SheetChrome";
-import { qualify, responseOverlay } from "../../scoring/sheets.js";
+import { qualify, responseOverlay, sheetValidation } from "../../scoring/sheets.js";
 import "../../index.css";
 import "./Form.css";
 
@@ -194,6 +194,10 @@ function sheetState(state: any, sheet: any, multi: boolean) {
     ...state,
     data: {
       ...state.data,
+      // The sheet's own answer key: the grid scores its bare cells with it, to colour them.
+      ...(multi && state.data?.validation
+        ? { validation: sheetValidation(state.data.validation, sheet.id) }
+        : {}),
       interaction: {
         type: "table",
         rows: sheet.rows,
