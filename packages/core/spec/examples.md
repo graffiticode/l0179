@@ -1,13 +1,15 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 # L0179 RAG Training Examples
 
-115 example prompts for training a RAG model on L0179, the interactive-spreadsheet language —
-covering display spreadsheets, assessed spreadsheets, and parameterized templates.
+122 example prompts for training a RAG model on L0179, the interactive-spreadsheet language —
+covering display spreadsheets, assessed spreadsheets, parameterized templates, and whether an
+assessed sheet marks answers as the learner types or only when they check.
 
 Each numbered line is a prompt in the author's own voice. Prompts describe WHAT to build, never
 how to write it, so this list is inherited from L0166 unchanged: L0179 differs only in source
 syntax and compiles to the same form, so every prompt here means the same thing in both
-languages. Where the two diverge in future, this file diverges with them.
+languages. Where the two diverge, this file diverges with them: Category 13 (when feedback
+shows) is L0179's alone.
 ## Category 1: Minimal / Structural Basics (1–10)
 
 1. Create a spreadsheet with a single empty cell.
@@ -158,3 +160,13 @@ languages. Where the two diverge in future, this file diverges with them.
 113. Make a two-sheet assessment worth 10 points total, split evenly between the two sheets.
 114. Create a single-sheet spreadsheet named Summary that shows its name in the sheet menu.
 115. Make a two-sheet workbook where each sheet has its own bold header row and a total row at the bottom.
+
+## Category 13: When Feedback Shows (116–122)
+
+116. Make an assessed multiplication table where each answer turns green or red as soon as the student enters it.
+117. Create a practice budget spreadsheet with instant feedback on the total and average cells, so students can correct themselves as they go.
+118. Build a unit conversion worksheet that tells students immediately whether each converted value is right.
+119. Make a graded tax calculation spreadsheet where students only see which answers are right after they press Check.
+120. Create a quiz-style spreadsheet on percentages with no hints while students work; feedback only when they check.
+121. A self-study grade book where students fill in each student's average and see right away if it is correct, worth 1 point per cell.
+122. Make a two-sheet practice workbook, Fractions and Decimals, that marks every answer right or wrong as students type it.
