@@ -76,7 +76,9 @@ export const FormulaBar = ({ editorView }) => {
         name="formula"
         type="text"
         value={value}
-        style={{borderStyle: "none"}}
+        // `outline: none`, not `focus:outline-0`: that only zeroes the width, and Chrome still draws
+        // its `auto` focus-visible ring at width 0 — the blue box a click on the bar used to show.
+        style={{borderStyle: "none", outline: "none"}}
         onChange={e => handleChange(e.target.value)}
         className="block w-full ring-0 border-0 p-0 text-gray-900 placeholder:text-gray-400 sm:text-sm/6 focus:outline-0 focus:ring-0 border-none p-0 mb-0"
       />
