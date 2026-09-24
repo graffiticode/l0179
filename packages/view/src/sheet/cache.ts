@@ -81,7 +81,9 @@ export const evalKey = (cells: any, name: string, deps: string[]): string => {
  */
 export const formatKey = (cell: any): string => (
   (typeof cell?.val) + UNIT + String(cell?.val ?? "") + UNIT +
-  String(cell?.type ?? "") + UNIT + String(cell?.format ?? "")
+  String(cell?.type ?? "") + UNIT + String(cell?.format ?? "") +
+  // A fraction displays as typed, so `3/4` and `6/8` (both 0.75) must not share an entry.
+  (cell?.type === "fraction" ? UNIT + String(cell?.formula ?? cell?.text ?? "") : "")
 );
 
 /** Bounded, oldest-first. Stops a long editing session growing either map without limit. */

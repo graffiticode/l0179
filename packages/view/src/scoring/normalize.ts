@@ -234,17 +234,74 @@ export const normalizeNumberInput = (text: any): number | null => {
  * Excel serial dates start from January 1, 1904 as day 1.
  */
 const dateToSerial = (date: Date): number => {
-  const excelEpoch = new Date(1904, 0, 1);
+  // Calendar days, counted in UTC. Counted in local time, a date inside daylight saving is an
+  // hour short of a whole number of days after the epoch, so it floored to the day BEFORE and
+  // every summer date displayed a day early (`4/3/2026` showed `04/02/2026`).
   const msPerDay = 24 * 60 * 60 * 1000;
-  const daysSinceEpoch = Math.floor((date.getTime() - excelEpoch.getTime()) / msPerDay);
-  return daysSinceEpoch + 1;
+  const day = Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
+  return Math.round((day - Date.UTC(1904, 0, 1)) / msPerDay) + 1;
+};
+
+/**
+ * A fraction as a learner types one — `3/4`, `-3/4`, or Excel's mixed form `1 1/2` (and `0 3/4`,
+ * Excel's way of forcing a fraction) — as its value, or null when the text is not one.
+ *
+ * In a cell with no date format this is read BEFORE any date: a learner answering "½ + ¼ =" types
+ * `3/4` and means three quarters, and it was being read as 4 March. See `classifyInput`.
+ */
+export const parseFraction = (text: any): number | null => {
+  if (typeof text !== "string") return null;
+  const m = text.trim().match(/^(-)?(?:(\d+)\s+)?(\d+)\s*\/\s*(\d+)$/);
+  if (!m) return null;
+  const denominator = Number(m[4]);
+  if (denominator === 0) return null;
+  const value = Number(m[2] || 0) + Number(m[3]) / denominator;
+  return m[1] ? -value : value;
+};
+
+/** Whether a date format puts the day first (`DD/MM/YYYY`, `D/M/YY`, `DD MMM YYYY`). */
+export const isDayFirst = (format: any): boolean =>
+  typeof format === "string" && /^\s*D/i.test(format);
+
+/**
+ * What typed text holds: `{type, val}` for a fraction, date or number, or null for plain text.
+ * The one place input is classified, shared by the grid (what a learner typed, under the cell's
+ * `format`) and the scorer (an `expected`, under the type the learner's cell resolved to) — so
+ * the two can never disagree about what `3/4` means.
+ *
+ * `date` says the context is a date: a date-formatted cell, or an answer scored against a date.
+ * Then `3/4` is a date, in the current year, day-first when `dayFirst`. Otherwise `3/4` is the
+ * fraction three quarters — shown as typed, valued 0.75, so it equals `0.75` and `6/8`.
+ */
+export const classifyInput = (
+  text: any,
+  { date = false, dayFirst = false }: { date?: boolean; dayFirst?: boolean } = {},
+): { type: "fraction" | "date" | "number"; val: string } | null => {
+  if (!date) {
+    const fraction = parseFraction(text);
+    if (fraction !== null) return { type: "fraction", val: String(fraction) };
+  }
+  const serial = normalizeDateInput(text, { dayFirst });
+  if (serial) return { type: "date", val: String(serial) };
+  const number = normalizeNumberInput(text);
+  if (number !== null) return { type: "number", val: String(number) };
+  return null;
 };
 
 /**
  * Normalizes date input from various formats into a serial number.
+ *
+ * A date written without a year takes the CURRENT year, as a spreadsheet does. It used to reach
+ * V8's `Date.parse` first, which fills a missing year with 2001 — `3/4` became 4 March 2001 and
+ * displayed as `03/04/2001`. So a partial date is handled before `Date.parse`, and anything
+ * `Date.parse` still completes without a four-digit year in the text gets this year instead.
+ *
  * @returns the date serial number, or null if not a valid date
  */
-export const normalizeDateInput = (text: any): number | null => {
+export const normalizeDateInput = (
+  text: any,
+  { dayFirst = false }: { dayFirst?: boolean } = {},
+): number | null => {
   if (!text || typeof text !== "string") {
     return null;
   }
@@ -279,6 +336,19 @@ export const normalizeDateInput = (text: any): number | null => {
   if (currencyPattern.test(trimmed)) {
     return null;
   }
+  // A day-first cell reads `3/4/2026` as 3 April, which Date.parse (month-first) would not.
+  const numericDate = trimmed.match(/^(\d{1,2})[/\-.](\d{1,2})(?:[/\-.](\d{4}))?$/);
+  if (numericDate) {
+    const [a, b] = [parseInt(numericDate[1], 10), parseInt(numericDate[2], 10)];
+    let [month, day] = dayFirst ? [b, a] : [a, b];
+    // Only one reading is a real date (`25/12` month-first): take it, as the old EU rule did.
+    if (month > 12 && day <= 12) [month, day] = [day, month];
+    const year = numericDate[3] ? parseInt(numericDate[3], 10) : today.getFullYear();
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return dateToSerial(new Date(year, month - 1, day));
+    }
+    return null;
+  }
   // Try to parse various date formats
   // First, try native Date parsing for ISO and common formats.
   // V8's Date.parse is permissive (e.g. Date.parse("7-4=") returns a valid
@@ -288,7 +358,10 @@ export const normalizeDateInput = (text: any): number | null => {
   if (/^[\dA-Za-z\s/\-.,:T]+$/.test(trimmed)) {
     const parsed = Date.parse(trimmed);
     if (!isNaN(parsed)) {
-      return dateToSerial(new Date(parsed));
+      const date = new Date(parsed);
+      // V8 fills a missing year with 2001 ("Mar 4" → 2001). No four-digit year written: this year.
+      if (!/\d{4}/.test(trimmed)) date.setFullYear(today.getFullYear());
+      return dateToSerial(date);
     }
   }
   // Handle MM/DD/YYYY, MM-DD-YYYY, MM.DD.YYYY

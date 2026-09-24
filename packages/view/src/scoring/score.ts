@@ -31,8 +31,8 @@ import {
   toUpperCase,
   stripAbsoluteReferences,
   wrapPlainTextInLatex,
-  normalizeNumberInput,
-  normalizeDateInput,
+  classifyInput,
+  isDayFirst,
 } from "./normalize.js";
 import { qualify, splitBySheet } from "./sheets.js";
 
@@ -122,9 +122,12 @@ const equivFormula = (actual: any, expected: any, memo?: Map<string, any[]>): bo
   });
 };
 
+/** A fraction is a number that remembers how it was written: the two compare as one kind. */
+const kindOf = (type: any) => (type === "fraction" ? "number" : type);
+
 const equivValue = (actual: any, expected: any, actualType: any, expectedType: any): boolean => {
   // First check type compatibility
-  if (actualType && expectedType && actualType !== expectedType) {
+  if (actualType && expectedType && kindOf(actualType) !== kindOf(expectedType)) {
     return false;
   }
 
@@ -180,7 +183,7 @@ export const evaluateExpectedFormula = (formula: any, interactionCells: any, ctx
 /** Score one cell against one `assess` record. Returns `{points, isValid}`, never throws. */
 export const scoreCell = (
   { method, expected, points = 1 }: any,
-  { val, formula, type }: any = { val: undefined, formula: undefined, type: undefined },
+  { val, formula, type, format }: any = { val: undefined, formula: undefined, type: undefined },
   interactionCells: any = undefined,
   ctx: ScoreContext | undefined = undefined,
 ): any => {
@@ -197,21 +200,16 @@ export const scoreCell = (
     let expectedVal = resolvedExpected;
 
     if (resolvedExpected != null) {
-      const expectedStr = String(resolvedExpected);
-      // Check if it's a date
-      const normalizedDate = normalizeDateInput(expectedStr);
-      if (normalizedDate) {
-        expectedType = "date";
-        // Store as string to match how we store val
-        expectedVal = String(normalizedDate);
-      } else {
-        // Check if it's a number
-        const normalizedNumber = normalizeNumberInput(expectedStr);
-        if (normalizedNumber !== null) {
-          expectedType = "number";
-          // Store as string to match how we store val
-          expectedVal = String(normalizedNumber);
-        }
+      // Read exactly as the grid reads what the learner typed (classifyInput): `3/4` is a date
+      // only where the learner's cell is one, and otherwise the fraction — so an expected `3/4`
+      // accepts `3/4`, `6/8` and `0.75`. Values are strings, as the grid stores them.
+      const classified = classifyInput(String(resolvedExpected), {
+        date: type === "date",
+        dayFirst: isDayFirst(format),
+      });
+      if (classified) {
+        expectedType = classified.type;
+        expectedVal = classified.val;
       }
     }
 

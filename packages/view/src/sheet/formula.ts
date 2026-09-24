@@ -24,8 +24,8 @@ import {
   stripAbsoluteReferences,
   isNumeric,
   wrapPlainTextInLatex,
-  normalizeNumberInput,
-  normalizeDateInput,
+  classifyInput,
+  isDayFirst,
 } from "../scoring/index.js";
 import { findCycle, findCycleWith, lazyPrecedents, getSingleCellDependencies } from "./graph.js";
 import { evalKey, cacheGet, cacheSet, formatKey, formatCacheGet, formatCacheSet } from "./cache.js";
@@ -113,20 +113,13 @@ export const evalCell = ({ env, name, graph, cache }: any): CellValue => {
     }
   }
 
-  // Apply normalization for non-formula input
+  // Apply normalization for non-formula input. The cell's format decides what `3/4` is: a date
+  // in a date-formatted cell (this year, day-first if the format is), otherwise a fraction.
   if (text && !text.startsWith('=')) {
-    // Try to normalize as date first
-    const normalizedDate = normalizeDateInput(text);
-    if (normalizedDate) {
-      result.val = String(normalizedDate);
-      result.type = 'date';
-    } else {
-      // Try to normalize as number
-      const normalizedNumber = normalizeNumberInput(text);
-      if (normalizedNumber !== null) {
-        result.val = String(normalizedNumber);
-        result.type = 'number';
-      }
+    const classified = classifyInput(text, { date: isDateFormat(format), dayFirst: isDayFirst(format) });
+    if (classified) {
+      result.val = classified.val;
+      result.type = classified.type;
     }
   }
   try {
@@ -269,7 +262,8 @@ export const formatCellValue = ({ env, name, cache }: any) => {
   const val = cell.val;
   const type = cell.type || 'text';
   const format = cell.format || "";
-  let result = val;
+  // A fraction shows as the learner typed it (`3/4`, not 0.75) unless a format says otherwise.
+  let result = type === 'fraction' && !format ? (cell.formula ?? cell.text ?? val) : val;
 
   // Handle date serial numbers based on type and format
   const isDateFormatted = isDateFormat(format);
@@ -277,9 +271,11 @@ export const formatCellValue = ({ env, name, cache }: any) => {
   if ((type === 'date' || isDateFormatted) && val) {
     const numVal = typeof val === 'string' ? parseFloat(val) : val;
     if (!isNaN(numVal)) {
-      const excelEpoch = new Date(1904, 0, 1);
+      // Back from calendar days in UTC, as normalize.ts counts them, and read in UTC below — a
+      // local-time round trip lost a day on every date inside daylight saving.
       const msPerDay = 24 * 60 * 60 * 1000;
-      const date = new Date(excelEpoch.getTime() + (numVal - 1) * msPerDay);
+      const utc = new Date(Date.UTC(1904, 0, 1) + (numVal - 1) * msPerDay);
+      const date = new Date(utc.getUTCFullYear(), utc.getUTCMonth(), utc.getUTCDate());
     // Apply specific date format
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
                        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];

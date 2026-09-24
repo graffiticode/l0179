@@ -12,4 +12,7 @@ export {
   wrapPlainTextInLatex,
   normalizeNumberInput,
   normalizeDateInput,
+  parseFraction,
+  isDayFirst,
+  classifyInput,
 } from "./normalize.js";
