@@ -21,10 +21,13 @@ function gridOf(interaction: any): any {
 }
 
 /**
- * `{score, max}` for the model, or `undefined` when there is nothing to check — no answer key, or
- * no assessed cell. Never throws: the View calls it on every change.
+ * `{score, max, complete}` for the model, or `undefined` when there is nothing to check — no answer
+ * key, or no assessed cell. `complete` is every assessed cell holding text; until then the View
+ * keeps Check disabled. Never throws: the View calls it on every change.
  */
-export const score = (data: any): { score: number; max: number } | undefined => {
+export const score = (
+  data: any,
+): { score: number; max: number; complete: boolean } | undefined => {
   const validation = data?.validation;
   if (!validation || typeof validation !== "object") return undefined;
   try {
@@ -40,7 +43,16 @@ export const score = (data: any): { score: number; max: number } | undefined => 
       (sum, name) => sum + (scored[name]?.score?.points || 0),
       0,
     );
-    return { score: total, max: validation.points || 0 };
+    // A cell the learner never touched has no response entry; its authored text, if any, is what
+    // the grid shows, so an assessed cell that comes pre-filled does not hold Check back forever.
+    const grid = gridOf(data.interaction) || {};
+    const shown = (cell: any) => String(cell?.text ?? cell?.val ?? "").trim();
+    const answered = (name: string) => (shown(responses[name]) || shown(grid[name])) !== "";
+    return {
+      score: total,
+      max: validation.points || 0,
+      complete: Object.keys(key).every(answered),
+    };
   } catch {
     return undefined;
   }
